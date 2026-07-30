@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   computeResult,
   compareMarketplaces,
@@ -12,6 +12,7 @@ import {
   CUSTOM_MARKETPLACE_ID,
   makeCustomMarketplace,
 } from "../lib/marketplaces.mjs";
+import { encodeShareParams, decodeShareParams } from "../lib/share.mjs";
 
 /** 文字列入力を非負の数値に変換（空欄・不正値は 0）。 */
 function num(v: string): number {
@@ -45,6 +46,29 @@ export default function Home() {
   const [customFee, setCustomFee] = useState("10");
   const [customFixed, setCustomFixed] = useState("0");
   const [roundUnit, setRoundUnit] = useState("10");
+
+  // 共有ボタンの一時的な結果表示。"copied"=コピー成功 / "error"=クリップボード不可。
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+
+  // URL に共有パラメータが載っていれば、その条件で起動する。
+  // static export では初期描画は既定値のため、ハイドレーション後に useEffect で反映して
+  // サーバー／クライアントの描画差異（hydration mismatch）を避ける。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const s = decodeShareParams(window.location.search);
+    if (s.materialCost !== undefined) setMaterialCost(s.materialCost);
+    if (s.workMinutes !== undefined) setWorkMinutes(s.workMinutes);
+    if (s.hourlyWage !== undefined) setHourlyWage(s.hourlyWage);
+    if (s.shipping !== undefined) setShipping(s.shipping);
+    if (s.includeShipping !== undefined) setIncludeShipping(s.includeShipping);
+    if (s.profitPercent !== undefined) setProfitPercent(s.profitPercent);
+    if (s.marketId !== undefined) setMarketId(s.marketId);
+    if (s.customFee !== undefined) setCustomFee(s.customFee);
+    if (s.customFixed !== undefined) setCustomFixed(s.customFixed);
+    if (s.roundUnit !== undefined) setRoundUnit(s.roundUnit);
+  }, []);
 
   const inputs = useMemo(
     () => ({
@@ -92,6 +116,48 @@ export default function Home() {
 
   const hasInput =
     inputs.materialCost > 0 || inputs.hourlyWage > 0 || inputs.shipping > 0;
+
+  // いまの入力条件を URL にまとめ、アドレスバーへ反映しつつクリップボードへコピーする。
+  // すべてブラウザ内で完結し、値をサーバーへ送らない。
+  const handleShare = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    const query = encodeShareParams({
+      materialCost,
+      workMinutes,
+      hourlyWage,
+      shipping,
+      includeShipping,
+      profitPercent,
+      marketId,
+      customFee,
+      customFixed,
+      roundUnit,
+    });
+    const url = `${window.location.origin}${window.location.pathname}?${query}`;
+    // 開き直したときに条件が復元されるよう、アドレスバーの URL も更新する。
+    window.history.replaceState(null, "", url);
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareStatus("copied");
+      window.setTimeout(() => setShareStatus("idle"), 2500);
+    } catch {
+      // クリップボードが使えない環境（権限拒否など）では URL の更新だけ行い、
+      // アドレスバーから手動でコピーしてもらう旨を伝える。
+      setShareStatus("error");
+      window.setTimeout(() => setShareStatus("idle"), 4000);
+    }
+  }, [
+    materialCost,
+    workMinutes,
+    hourlyWage,
+    shipping,
+    includeShipping,
+    profitPercent,
+    marketId,
+    customFee,
+    customFixed,
+    roundUnit,
+  ]);
 
   // 積み上げバー（販売価格の内訳）。
   const p = result.price || 1;
@@ -477,6 +543,34 @@ export default function Home() {
                       <span className="val toll">−{formatYen(result.fee)}</span>
                     </li>
                   </ul>
+                </div>
+              )}
+
+              {hasInput && result.feasible && result.price > 0 && (
+                <div className="sharebox">
+                  <button
+                    type="button"
+                    className="btn btn-ghost share-btn"
+                    onClick={handleShare}
+                    aria-describedby="share-desc"
+                  >
+                    <span aria-hidden="true">
+                      {shareStatus === "copied" ? "✓" : "🔗"}
+                    </span>
+                    {shareStatus === "copied"
+                      ? "リンクをコピーしました"
+                      : "この計算をURLで保存・共有"}
+                  </button>
+                  <p id="share-desc" className="share-hint">
+                    いまの条件をリンクにして控えられます。開き直すと同じ計算が復元されます。入力した金額もリンクに含まれるので、共有すると相手にも見えます。
+                  </p>
+                  <p className="share-status" role="status" aria-live="polite">
+                    {shareStatus === "copied"
+                      ? "リンクをコピーしました。ブックマークや共有に使えます。"
+                      : shareStatus === "error"
+                        ? "アドレスバーのURLをコピーしてお使いください。"
+                        : ""}
+                  </p>
                 </div>
               )}
             </div>

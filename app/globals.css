@@ -778,6 +778,38 @@ select.plain:focus-visible {
   background: var(--accent-soft);
 }
 
+/* --- この計算を URL で保存・共有 --- */
+/* .tagcol は display:grid; gap:var(--sp-4) なので、ここで margin-top を足すと
+   グリッドの gap と加算されて余白が倍になる。余白リズムは gap に任せる。 */
+.sharebox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.share-btn {
+  width: 100%;
+}
+.share-hint,
+.share-status {
+  margin: 0;
+  font-size: var(--fs-cap);
+  line-height: 1.6;
+  text-align: center;
+}
+.share-hint {
+  color: var(--ink-dim);
+}
+/* コピー結果の一時表示。手取り色（苔緑）で成功が視覚的にも伝わるようにする。 */
+.share-status {
+  min-height: 1.6em; /* 表示/非表示で高さが動かないよう場所を確保 */
+  font-weight: 700;
+  color: var(--take);
+}
+.share-status.is-error {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
 /* --- 注意・免責の帯 --- */
 .notice {
   display: flex;
