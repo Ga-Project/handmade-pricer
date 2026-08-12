@@ -182,7 +182,11 @@ export default function Home() {
 
       <header className="masthead">
         <div className="wrap">
-          <a className="logo" href="/">
+          {/* トップ自身なのでリンクにしない。
+              リンクにすると next/link のソフト遷移でクエリだけが消え、共有パラメータを
+              読む useEffect は再実行されないため、アドレスバーと画面の計算が食い違う。
+              その状態で「URLで共有」を押すと、相手には別の数字が出るリンクが渡ってしまう。 */}
+          <div className="logo">
             <span className="logo-tag" aria-hidden="true">
               ¥
             </span>
@@ -190,7 +194,7 @@ export default function Home() {
               <b>ねだんの工房</b>
               <span>HANDMADE PRICER</span>
             </span>
-          </a>
+          </div>
           <a className="btn btn-ghost" href="#compare">
             販売所くらべ
           </a>

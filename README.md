@@ -35,15 +35,20 @@ pnpm test                  # node --test（標準ランナー）
 handmade-pricer/
 ├─ app/
 │  ├─ page.tsx        # 価格計算 UI（下げ札に逆算・販売所くらべ）
-│  ├─ layout.tsx      # SEO/OGP メタ・アクセス解析タグ
+│  ├─ layout.tsx      # SEO/OGP メタ・構造化データ・アクセス解析タグ
 │  ├─ not-found.tsx   # 404（out/404.html を生成）
+│  ├─ site.ts         # 公開 URL の単一の出どころ（サーバー側専用）
+│  ├─ sitemap.ts      # out/sitemap.xml を生成
 │  └─ globals.css     # 独自デザイン（手仕事の値札工房）・light/dark・a11y
 ├─ lib/
 │  ├─ pricing.mjs     # 価格逆算の純関数（UIから独立してテスト可能）
 │  └─ marketplaces.mjs# 販売所の手数料プリセット（参考値）
+├─ public/og.png      # 共有カード（書き出し結果・コミットしたものが公開される）
+├─ scripts/
+│  ├─ og-card.html    # 共有カードの原版
+│  └─ og-card.sh      # og-card.html → public/og.png の書き出し
 ├─ test/              # node:test のユニット/スモークテスト
-├─ next.config.mjs    # output: "export"
-└─ scripts/public-gate.sh
+└─ next.config.mjs    # output: "export"
 ```
 
 ## デザイン
@@ -51,6 +56,57 @@ handmade-pricer/
 デザインはこの製品専用にゼロから作成（世界観「手仕事の値札工房」＝作業台に材料と手間を置くと
 下げ札に値段が仕立て上がる）。プレーン CSS＋CSS 変数のみ。light/dark 両対応・コントラスト AA・
 `:focus-visible`・`prefers-reduced-motion`・44px タッチ・skip-link を備える。
+
+## 検索エンジンへの登録（sitemap の扱い）
+
+ビルドすると `out/sitemap.xml` が出る。ただし **robots.txt は置いていない**。robots.txt は
+オリジン単位でしか読まれず、この製品が置ける `/<slug>/robots.txt` はクローラに取得されない
+（唯一有効な `https://ga-project.github.io/robots.txt` は当社の管理外・実測 404）。
+置いても読まれないファイルが増えるだけなので出力していない。
+
+そのため **sitemap の到達経路は Search Console への手動送信ひとつだけ**になる。
+
+- 送信先: Search Console に `https://ga-project.github.io/handmade-pricer/` を登録し、
+  サイトマップとして `https://ga-project.github.io/handmade-pricer/sitemap.xml` を送る
+- 送信しない場合でも、会社サイトからの被リンクがあるためページ自体はクロールされる。
+  1ページ構成なので sitemap の有無で索引可否が決まるわけではない（送れば通知が早くなる、という位置づけ）
+
+## 共有カード（og:image）
+
+SNS やチャットに URL を貼ったときに出る 1200×630 の画像。原版は `scripts/og-card.html`。
+
+```bash
+./scripts/og-card.sh       # scripts/og-card.html → public/og.png
+```
+
+原版を直したら必ず書き出し、`public/og.png` も一緒にコミットする（コミットされた PNG が
+そのまま公開物になる）。書き出したら**拡大して目視で確認する**こと。
+
+- 麻ひもが穴を通っているか（端がクラフト地の上に露出していないか）
+- 「材料と手間」の3つの金額の右端が揃っているか
+- パネルの下端と最下行の隙間。`.foot` は下端固定なので、**片方を動かすと必ずもう片方が変わる**
+
+スクリプトが機械で検査して落とすのは次の3つ。目視はそれ以外（見た目の座りや読みやすさ）に使う。
+
+- 寸法（1200×630）とファイルサイズ（白紙検出）
+- **はみ出し**: 全要素の `scrollWidth / scrollHeight > clientWidth / clientHeight`
+- **重なり**: `.head` `.inputs` `.arrow` `.tag` `.foot` の矩形が互いに交差していないか
+
+はみ出しと重なりは別のクラスで、片方の検査でもう片方は拾えない（余白を詰めて下の行に
+食い込む類は「重なり」側でしか出ない）。どちらも実際に取りこぼした経緯があるため両方見る。
+
+書き出しは **macOS のフォント（Hiragino 系）を前提**にしている。原版が先頭に Hiragino を
+指定しているため、別 OS で焼くと別の字面の絵になる。CI（Linux）でのビルド時生成をしていない
+のはこのため。差し替えるときは同じ macOS 環境で焼き直すこと。
+
+カード上の数字は `lib/pricing.mjs` の既定入力そのままの出力なので、実物のツールを開けば
+同じ画面が出る。手数料プリセットや既定値を変えたらカードの数字も更新する。
+
+    材料費 500 ＋ 工賃 1,000（60分 × ¥1,000/時）＋ 送料 300 ＝ 原価 1,800
+    目標利益 20% ／ minne（手数料 10.56%）／ 10円切り上げ
+    → 売価 ¥2,420 ／ 手数料 ¥256 ／ 手取り ¥2,164
+
+なお目標利益 20% はカード上には出していない（28px 以上で収まる場所が無いため）。
 
 ## アクセス解析
 

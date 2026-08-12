@@ -1,0 +1,294 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>ねだんの工房 — OG カード原版</title>
+<!--
+  共有カード（og:image）の原版。1200×630 で書き出して public/og.png に置く。
+  書き出しは scripts/og-card.sh（README 参照）。
+
+  描くもの: このプロダクトは「売価から手数料を引く」道具ではなく、
+  材料費と作業時間から《売価を逆算する》道具。だからカードも左に材料と手間を置き、
+  矢印で右の下げ札（＝仕立て上がった売価）へ渡す向きで構成する。向きを逆に描くと
+  ただの手数料計算機に見えてしまい、差別化が伝わらない。
+
+  数字は lib/pricing.mjs の既定入力そのままの出力なので、実物で再現できる:
+    材料費500 ＋ 工賃1,000（60分 × ¥1,000/h）＋ 送料300 ＝ 原価1,800、目標利益20%
+    → 売価 ¥2,420 ／ minne 手数料 ¥256 ／ 手取り ¥2,164
+
+  下げ札の造形は app/globals.css の .hangtag に合わせる（左上だけ大きく丸めた
+  非対称の角・枠線は一周・穴は paper 塗り＋kraft-edge 枠・ステッチは輪郭と同心）。
+  clip-path で肩を斜めに切ると枠線とステッチが断裂するため、本体 CSS でも採用して
+  いない手法。ここでも使わない。
+
+  縮小耐性: X のタイムラインでは横 約504px、チャット系では 約360px まで縮む。
+  読ませる文字は原寸 28px 以上（＝504px 換算で約12px）に保ち、そこに乗らない
+  情報はカードに載せない。
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+      system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* globals.css の light トークンと同値 */
+  :root {
+    --accent-ink:  hsl(344 60% 34%);
+    --accent-soft: hsl(344 58% 95%);
+    --paper:       hsl(35 42% 97%);
+    --card:        hsl(38 52% 99%);
+    --sunken:      hsl(34 36% 95.5%);
+    --kraft:       hsl(30 40% 86%);
+    --kraft-edge:  hsl(28 34% 74%);
+    --ink:         hsl(345 24% 19%);
+    --ink-soft:    hsl(345 15% 34%);
+    --seam:        hsl(32 26% 80%);
+    /* kraft 地の上で使うため、本体(--card 上)より一段暗くして AA に余裕を持たせる。 */
+    --take:        hsl(150 48% 25%);
+    --twine:       hsl(32 30% 58%);
+  }
+
+  .card {
+    position: relative; width: 1200px; height: 630px; overflow: hidden;
+    background:
+      radial-gradient(900px 620px at 22% 4%, hsl(344 58% 62% / 0.09), transparent 62%),
+      linear-gradient(163deg, var(--paper) 0%, hsl(34 40% 94%) 100%);
+  }
+  /* 作業台の紙目 */
+  .weave {
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg, hsl(30 24% 46% / 0.045) 0 1px, transparent 1px 9px);
+  }
+
+  /* ---------- 左：名前と、置かれた材料・手間 ---------- */
+  .head { position: absolute; left: 68px; top: 48px; width: 560px; }
+  .kicker {
+    display: inline-block; font-size: 28px; font-weight: 700; letter-spacing: .04em;
+    color: var(--accent-ink); background: var(--accent-soft);
+    border: 2px solid hsl(344 48% 86%);
+    padding: 9px 20px; border-radius: 999px;
+  }
+  .title {
+    margin-top: 16px; font-size: 82px; font-weight: 800; letter-spacing: .015em;
+    color: var(--accent-ink); line-height: 1.0;
+  }
+  .lede {
+    margin-top: 16px; font-size: 31px; font-weight: 600; line-height: 1.46;
+    color: var(--ink);
+  }
+
+  /* 材料と手間（＝入力側）。これがあるので「逆算」の向きが伝わる。 */
+  .inputs {
+    position: absolute; left: 68px; top: 344px; width: 462px;
+    background: var(--card); border: 2px solid var(--seam); border-radius: 20px;
+    padding: 10px 22px 12px;
+    box-shadow: 0 1px 1px hsl(30 30% 40% / 0.06), 0 12px 26px -16px hsl(345 30% 30% / 0.30);
+  }
+  /* 実線の外枠＋破線の内枠という本体パネルの署名的ディテール（globals.css .panel::after）。
+     下げ札だけステッチ有りだと不統一になる。 */
+  .inputs::after {
+    content: ""; position: absolute; inset: 7px;
+    border: 2px dashed var(--seam); border-radius: 13px;
+  }
+  .inputs > * { position: relative; }
+  .inputs-title {
+    /* 本文行と同寸・同色だと「金額の無い4行目」に見えてしまうので、色と太さで分ける
+       （サイズや余白で分けるとパネルが高くなり、下の帯との間隔が崩れる）。 */
+    font-size: 28px; font-weight: 800; letter-spacing: .06em; color: var(--accent-ink);
+    line-height: 1.1;
+  }
+  /* ラベル列＋金額列の2カラム。flex + space-between + nowrap だと、ラベルが伸びたときに
+     縮みも折り返しもせず黙ってパネルの外へ出る（金額の右端も揃わなくなる）。
+     grid にして金額列を右端に固定し、はみ出しではなくラベル側の省略として現れるようにする。 */
+  .row {
+    display: grid; grid-template-columns: 1fr auto; column-gap: 14px; align-items: baseline;
+    margin-top: 5px; font-size: 28px; line-height: 1.35; font-weight: 700; color: var(--ink);
+  }
+  .row .k {
+    font-weight: 600; color: var(--ink-soft);
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row .v { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- 中：逆算の矢印 ---------- */
+  .arrow { position: absolute; left: 546px; top: 396px; text-align: center; width: 128px; }
+  .arrow .glyph {
+    font-size: 58px; font-weight: 800; color: var(--accent-ink); line-height: 1;
+  }
+  .arrow .cap {
+    margin-top: 2px; font-size: 28px; font-weight: 800; letter-spacing: .1em;
+    color: var(--accent-ink);
+  }
+
+  /* ---------- 右：仕立て上がった下げ札 ---------- */
+  .tag {
+    position: absolute; left: 690px; top: 140px; width: 450px; height: 410px;
+    background: var(--kraft);
+    border: 3px solid var(--kraft-edge);
+    /* 左上だけ大きく丸めた非対称の角（本体 .hangtag と同じ造形）。
+       clip-path を使わないので枠線が一周つながる。 */
+    /* 角丸の比率も本体に寄せる（本体 .hangtag は 30px/幅480 ≒ 6%）。 */
+    border-radius: 40px 26px 26px 26px;
+    box-shadow: 0 3px 3px hsl(30 30% 40% / 0.10), 0 26px 46px -20px hsl(345 40% 28% / 0.42);
+    transform: rotate(-1.6deg);
+  }
+
+  /* 麻ひもと穴は「重ね順」で通して見せる。札と同じ回転を受けるよう .tag の子に置き、
+     札ローカル座標（穴の中心 = left44+15, top32+15 = (59,47)・開口の内半径 12px）で描く:
+       1) .hole      … 開口。地より明るい paper で塗って「抜けて」見せる（枠線はまだ描かない）
+       2) svg.twine  … 麻ひも。2本のストランドが開口の内側で終わるので、端が
+                       クラフト地の上に露出しない＝穴を通って裏へ抜けたように見える
+       3) .hole-rim  … 開口のふち。ひもの上に重ねて縁を締める
+     輪の中心 X だけ合わせても、輪が開口より大きければ紐は穴の外側を素通りする。 */
+  .hole, .hole-rim {
+    position: absolute; left: 44px; top: 32px; width: 30px; height: 30px;
+    border-radius: 50%;
+  }
+  .hole { background: var(--paper); }
+  .hole-rim { border: 3px solid var(--kraft-edge); }
+  svg.twine {
+    position: absolute; left: -20px; top: -110px; width: 160px; height: 180px;
+    overflow: visible;
+  }
+  /* ステッチは輪郭と同心。外周の非対称な角に沿わせて一周つなげる。 */
+  .stitch {
+    position: absolute; inset: 16px;
+    border: 3px dashed hsl(28 30% 62%);
+    border-radius: 48px 18px 18px 18px;
+  }
+
+  .tag-body { position: absolute; left: 0; right: 0; top: 92px; text-align: center; }
+  .tag-label {
+    font-size: 29px; font-weight: 700; letter-spacing: .14em; color: var(--ink-soft);
+  }
+  .price {
+    margin-top: 2px; font-size: 96px; font-weight: 800; letter-spacing: -.02em;
+    color: var(--ink); line-height: 1.05; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .price .yen { font-size: 50px; font-weight: 700; margin-right: 4px;
+    vertical-align: 0.16em; }
+  .rule {
+    margin: 20px auto 0; width: 250px; height: 0;
+    border-top: 3px dashed hsl(28 28% 62%);
+  }
+  .take {
+    margin-top: 18px; font-size: 33px; font-weight: 800; color: var(--take);
+    white-space: nowrap;
+  }
+  .take-note {
+    margin-top: 6px; font-size: 28px; font-weight: 600; color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  /* 折り返すと下げ札に食い込むので、1行に収まる幅を確保する。 */
+  .foot {
+    position: absolute; left: 68px; width: 600px; bottom: 30px; white-space: nowrap;
+    font-size: 28px; font-weight: 700; color: var(--ink-soft); letter-spacing: .03em;
+  }
+  .foot .free { color: var(--take); font-weight: 800; }
+</style>
+
+<div class="card">
+  <div class="weave"></div>
+
+  <div class="head">
+    <span class="kicker">ハンドメイド作家の値付け</span>
+    <div class="title">ねだんの工房</div>
+    <div class="lede">
+      販売所の手数料を引いても<br />
+      手取りが残る売価を、逆算する。
+    </div>
+  </div>
+
+  <div class="inputs">
+    <div class="inputs-title">材料と手間</div>
+    <div class="row"><span class="k">材料費</span><span class="v">¥500</span></div>
+    <div class="row"><span class="k">作業 60分</span><span class="v">¥1,000</span></div>
+    <div class="row"><span class="k">梱包・送料</span><span class="v">¥300</span></div>
+  </div>
+
+  <div class="arrow">
+    <div class="glyph">→</div>
+    <div class="cap">逆算</div>
+  </div>
+
+  <div class="tag">
+    <div class="hole"></div>
+    <!-- 麻ひも。両端 (54,52) (64,52) はいずれも開口（中心(59,47)・内半径12）の内側で
+         終わるので、クラフト地の上に端面が出ない。 -->
+    <svg class="twine" viewBox="-20 -110 160 180" fill="none" aria-hidden="true">
+      <path
+        d="M 51 56 C 34 10, 24 -58, 59 -58 C 94 -58, 84 10, 67 56"
+        stroke="hsl(32 30% 58%)" stroke-width="6" stroke-linecap="round" />
+    </svg>
+    <div class="hole-rim"></div>
+    <div class="stitch"></div>
+    <div class="tag-body">
+      <div class="tag-label">売価</div>
+      <div class="price"><span class="yen">¥</span>2,420</div>
+      <div class="rule"></div>
+      <div class="take">手取り ¥2,164</div>
+      <div class="take-note">minne の手数料を引いた額</div>
+    </div>
+  </div>
+
+  <div class="foot"><span class="free">登録不要・無料</span>／ブラウザだけで計算</div>
+</div>
+
+<script>
+  // レイアウト検査。og-card.sh が --dump-dom で読んで、壊れていれば書き出しを失敗させる。
+  //
+  // 目視は同じ破綻を実際に何度も取りこぼしたので、機械で判定できるものは機械で落とす。
+  // 検出するのは次の2クラス。結果は hidden 要素にだけ書くので、書き出す画像は変わらない。
+  //
+  //   1. はみ出し   … 内容が容器に収まっていない（scrollWidth/Height > clientWidth/Height）
+  //   2. 重なり     … 主要ブロック同士の矩形が交差している。「余白を詰めたら下の行に
+  //                    食い込んだ」類はこちら。はみ出し検査では原理的に拾えない
+  //                    （実際に padding を増やして重ねても素通りすることを確認済み）
+  window.addEventListener("load", function () {
+    var bad = [];
+
+    // --- 1. はみ出し ---
+    document.querySelectorAll(".card *").forEach(function (el) {
+      if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) {
+        bad.push("横はみ出し " + (el.className || el.tagName) +
+                 "(" + el.scrollWidth + ">" + el.clientWidth + ")");
+      }
+      if (el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1) {
+        bad.push("縦はみ出し " + (el.className || el.tagName) +
+                 "(" + el.scrollHeight + ">" + el.clientHeight + ")");
+      }
+    });
+
+    // --- 2. 重なり（絶対配置の主要ブロック同士） ---
+    // 互いに重なってはいけないもの同士だけを挙げる。麻ひもと下げ札のように
+    // 意図的に重ねているものは入れない。
+    var names = [".head", ".inputs", ".arrow", ".tag", ".foot"];
+    var boxes = names.map(function (s) {
+      var el = document.querySelector(s);
+      return el ? { name: s, r: el.getBoundingClientRect() } : null;
+    }).filter(Boolean);
+
+    for (var i = 0; i < boxes.length; i++) {
+      for (var j = i + 1; j < boxes.length; j++) {
+        var a = boxes[i].r, b = boxes[j].r;
+        // 丸め誤差で隣接を交差と誤検出しないよう 1px の余裕を持たせる。
+        var dx = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        var dy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (dx > 1 && dy > 1) {
+          bad.push("重なり " + boxes[i].name + "×" + boxes[j].name +
+                   "(" + Math.round(dx) + "×" + Math.round(dy) + "px)");
+        }
+      }
+    }
+
+    var m = document.createElement("div");
+    m.id = "overflow-report";
+    m.hidden = true;
+    m.textContent = bad.length ? "LAYOUT_FAIL:" + bad.join(" / ") : "LAYOUT_OK";
+    document.body.appendChild(m);
+  });
+</script>

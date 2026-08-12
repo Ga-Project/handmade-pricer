@@ -1,6 +1,8 @@
 // ねだんの工房 — 404 ページ。static export では out/404.html に書き出される。
 import type { Metadata } from "next";
 
+import Link from "next/link";
+
 export const metadata: Metadata = {
   title: "ページが見つかりません — ねだんの工房",
   robots: { index: false, follow: false },
@@ -15,7 +17,7 @@ export default function NotFound() {
 
       <header className="masthead">
         <div className="wrap">
-          <a className="logo" href="/">
+          <Link className="logo" href="/">
             <span className="logo-tag" aria-hidden="true">
               ¥
             </span>
@@ -23,7 +25,7 @@ export default function NotFound() {
               <b>ねだんの工房</b>
               <span>HANDMADE PRICER</span>
             </span>
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -36,9 +38,9 @@ export default function NotFound() {
             をご確認のうえ、工房のトップからやり直してください。
           </p>
           <p style={{ marginTop: "var(--sp-5)" }}>
-            <a className="btn btn-accent" href="/">
+            <Link className="btn btn-accent" href="/">
               工房へもどる
-            </a>
+            </Link>
           </p>
         </section>
       </main>
