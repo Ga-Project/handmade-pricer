@@ -1,18 +1,25 @@
 name: Deploy to GitHub Pages
 
-# 公開前ゲート → ビルド → Pages 公開を1つの workflow で直列化する。
-# secret-scan が落ちたら build は skip され、Pages には何も公開されない
+# 公開前ゲート → 検査つきビルド → Pages 公開を1つの workflow で直列化する。
+# secret-scan が落ちたら build は skip され、Pages には何も公開されない。
+# build ジョブは typecheck / lint / build / test を通し、どれかが落ちれば deploy へ進まない
+# （ローカルで打った人だけが気づく検査は、実質的に無いのと同じなのでここに置く）。
 
 on:
   push:
     branches: [main]
+  # main へ入る前に同じ検査を通す。公開の瞬間がゲートの初走行、という状態を避ける。
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 # 最小権限。書き込みが要るのは deploy job のみ（下で job 単位に付与）。
 permissions:
   contents: read
 
+# PR の検査実行が main の公開実行を巻き込んで打ち切らないよう、ref ごとに分ける。
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -50,11 +57,17 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
       - run: pnpm build
         env:
           # プロジェクトページ（owner.github.io/<repo>/）配信のサブパスをアセットに反映する。
           # 未設定だと /_next/... をルートへ取りに行き、公開初回から全 404 になる。
           PAGES_BASE_PATH: /${{ github.event.repository.name }}
+      # テストは build の後に置く。test/guards.test.mjs が out/ を検査するため
+      # （クライアントバンドルへの URL 漏れ・画面と構造化データの不一致は、
+      #   書き出した結果を見ないと判定できない）。
+      - run: pnpm test
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out
@@ -62,6 +75,8 @@ jobs:
   deploy:
     name: Deploy
     needs: build
+    # 公開は main への push のときだけ。pull_request では検査までで止める。
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read

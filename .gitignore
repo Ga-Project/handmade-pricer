@@ -21,3 +21,6 @@ next-env.d.ts
 # OS / logs
 .DS_Store
 *.log
+
+# ローカル検証用の E2E スクリプト（配布物ではない）
+acceptance.e2e.mjs

@@ -60,6 +60,10 @@
   --sp-6: 2rem;
   --sp-8: 3rem;
 
+  /* 本文の行送り。summary のタッチ領域 44px の算出がこの値に依存する
+     （details summary の padding-block を参照）。 */
+  --lh-base: 1.7;
+
   --r-sm: 8px;
   --r: 14px;
   --r-lg: 22px;
@@ -125,7 +129,7 @@ html {
 body {
   font-family: var(--font);
   font-size: var(--fs-base);
-  line-height: 1.7;
+  line-height: var(--lh-base);
   color: var(--ink);
   background-color: var(--paper);
   /* 作業台の紙目: ごく淡いドットと斜めの布目 */
@@ -676,6 +680,7 @@ select.plain:focus-visible {
 .compare .lead {
   color: var(--ink-soft);
   font-size: var(--fs-sm);
+  max-width: 30em;
   margin-bottom: var(--sp-4);
 }
 .minitags {
@@ -835,7 +840,42 @@ select.plain:focus-visible {
 .faq h2 {
   font-size: var(--fs-lg);
   font-weight: 800;
-  margin-bottom: var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+/* 質問の列が始まる前に、ここに何が書いてあるかを一行で渡す。 */
+/* 読みの幅。導入文・質問行・回答本文をこの1本に揃える（親は 16px なので 30em = 480px、
+   本文 13.6px 換算で 34字前後）。行の幅が本文と一致することで、開いた行のパネルに
+   空きができず、右端の ＋ も本文の終端に寄る。 */
+.faq-lead,
+.faq-group {
+  max-width: 30em;
+}
+.faq-lead {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-5);
+}
+
+/* 「値付けの考え方」と「このツールについて」を分ける小見出し。 */
+.faq-group + .faq-group {
+  margin-top: var(--sp-6);
+}
+.faq-group h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--accent-ink);
+  margin-bottom: var(--sp-3);
+}
+/* 縫い目の破線。この製品の小ラベル（.eyebrow）と同じモチーフに揃える。 */
+.faq-group h3::before {
+  content: "";
+  width: 26px;
+  height: 0;
+  border-top: 2px dashed var(--accent-line);
 }
 details {
   border-bottom: 1.5px dashed var(--seam);
@@ -848,19 +888,45 @@ details summary {
   display: flex;
   justify-content: space-between;
   gap: var(--sp-3);
-  align-items: center;
-  min-height: 44px;
+  /* 質問文は狭い幅で2行以上に折り返す。center だとマーカーが行と行の間に落ちて
+     どの行の操作子か読めなくなるので、1行目に合わせる。
+     1行のときのタッチ領域 44px は padding で確保する（--lh-base = 本文の行送り）。 */
+  align-items: flex-start;
+  padding-block: calc((44px - var(--lh-base) * 1em) / 2);
 }
 details summary::-webkit-details-marker {
   display: none;
 }
 details summary::after {
+  /* 1行目は全ブラウザ向け。2行目の代替テキスト構文は、対応している UA だけが
+     上書きして読み上げ名から ＋/－ を外す（状態は aria の expanded が伝えている）。
+     非対応 UA は宣言ごと破棄するので、素の content が残る＝マーカーは消えない。 */
   content: "＋";
+  content: "＋" / "";
   color: var(--accent-ink);
   font-weight: 800;
 }
 details[open] summary::after {
   content: "－";
+  content: "－" / "";
+}
+/* 地色の上ではリングの色を変える。--accent は kraft 上で dark 時 3:1 を割るため
+   （WCAG 2.1 SC 1.4.11）、同じ地で余裕のある --accent-ink を使う。 */
+details[open] summary:focus-visible {
+  outline-color: var(--accent-ink);
+}
+details[open] {
+  background: var(--kraft);
+  border-radius: var(--r-sm);
+  padding-inline: var(--sp-3);
+  margin-inline: calc(var(--sp-3) * -1);
+  /* 負の inline マージンで border box が左右に広がるため、この行の破線だけが
+     上下より長く飛び出す。開いた行は地色で区切られていて縫い目は要らないので消す。 */
+  border-bottom-color: transparent;
+}
+/* 一覧の最後の破線は何も仕切っていない（直下はフッターの破線）。 */
+.faq-group:last-of-type details:last-of-type {
+  border-bottom: none;
 }
 details p {
   margin-top: var(--sp-2);

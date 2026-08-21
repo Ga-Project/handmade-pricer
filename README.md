@@ -23,11 +23,20 @@ pnpm build                 # next build → out/ に静的 HTML/CSS/JS を生成
 ## テスト
 
 ```bash
-pnpm test                  # node --test（標準ランナー）
+pnpm build && pnpm test    # ← この順で実行する
 ```
+
+`test/guards.test.mjs` は書き出した `out/` を検査するので、**先に `pnpm build` が要る**
+（`out/` が無ければ「ビルドしていないから緑」にならないよう、明示的に失敗する）。
+CI も `typecheck → lint → build → test` の順で通し、どれかが落ちれば公開へ進まない。
 
 - `test/pricing.test.mjs` … 価格逆算ロジックのユニットテスト
 - `test/smoke.test.mjs` … 販売所プリセットの健全性
+- `test/share.test.mjs` … 計算条件の URL 符号化・復元
+- `test/faq.test.mjs` … よくある質問の中身の不変量（件数・重複・表現の制約）
+- `test/guards.test.mjs` … 静かに壊れる失敗を `out/` で検出する
+  （クライアントバンドルへの公開 URL 漏れ／画面と構造化データの不一致／404 への
+  FAQPage 混入／共有カード原版と書き出しのズレ）
 
 ## 構成
 
@@ -42,10 +51,14 @@ handmade-pricer/
 │  └─ globals.css     # 独自デザイン（手仕事の値札工房）・light/dark・a11y
 ├─ lib/
 │  ├─ pricing.mjs     # 価格逆算の純関数（UIから独立してテスト可能）
-│  └─ marketplaces.mjs# 販売所の手数料プリセット（参考値）
+│  ├─ marketplaces.mjs# 販売所の手数料プリセット（参考値）
+│  ├─ share.mjs       # 計算条件の URL 符号化・復元
+│  ├─ faq.mjs         # よくある質問の単一ソース（画面表示と FAQPage 構造化データが共有）
+│  └─ json-ld.mjs     # 構造化データを <script> へ安全に書き出す
 ├─ public/og.png      # 共有カード（書き出し結果・コミットしたものが公開される）
 ├─ scripts/
 │  ├─ og-card.html    # 共有カードの原版
+│  ├─ og-card.html.sha256 # 上の原版のハッシュ（書き出し忘れの検出用・下記）
 │  └─ og-card.sh      # og-card.html → public/og.png の書き出し
 ├─ test/              # node:test のユニット/スモークテスト
 └─ next.config.mjs    # output: "export"
@@ -78,6 +91,11 @@ SNS やチャットに URL を貼ったときに出る 1200×630 の画像。原
 ```bash
 ./scripts/og-card.sh       # scripts/og-card.html → public/og.png
 ```
+
+書き出しの際に原版のハッシュを `scripts/og-card.html.sha256` へ併置する。原版だけ直して
+書き出しを忘れると（＝古い PNG が公開され続けると）`test/guards.test.mjs` がそのズレで落ちる。
+macOS のフォントに依存するため CI で PNG を再生成して比較することはできず、原版側を
+固定することで代替している（PNG だけ差し替えた場合は検出できない）。
 
 原版を直したら必ず書き出し、`public/og.png` も一緒にコミットする（コミットされた PNG が
 そのまま公開物になる）。書き出したら**拡大して目視で確認する**こと。

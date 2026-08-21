@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { toJsonLd } from "../lib/json-ld.mjs";
 import { SITE_URL } from "./site";
 
-const TITLE = "ねだんの工房｜ハンドメイド価格メーカー";
+const SITE_NAME = "ねだんの工房";
+// 検索結果に並ぶ一行。ブランド名だけだと「何ができるページか」が伝わらず、
+// 値付けで困って検索している人がクリックする理由にならない。用途を先に出す（ブランド名は og:site_name が持つ）。
+const TITLE = "ハンドメイドの値段の決め方｜手数料込みで売値を逆算";
 const DESC =
-  "材料費・作業時間・送料・目標利益から、minne / Creema / BASE などの手数料込みで「いくらで売れば手取りが残るか」を逆算する、ハンドメイド作家のための価格計算ツール。";
+  "無料・登録不要。材料費と作業時間（工賃）から、minne・Creema・メルカリ・BASE などの手数料を引いても手取りが残る売値を逆算。販売所ごとの売値の差も見比べられます。";
 
 // 共有カード（1200×630）。原版は scripts/og-card.html、書き出し先が public/og.png。
 const OG_IMAGE = `${SITE_URL}og.png`;
@@ -17,8 +21,8 @@ const OG_ALT =
 const JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  name: "ねだんの工房",
-  alternateName: TITLE,
+  name: SITE_NAME,
+  alternateName: "ハンドメイド価格メーカー",
   url: SITE_URL,
   image: OG_IMAGE,
   description: DESC,
@@ -36,6 +40,8 @@ export const metadata: Metadata = {
   title: TITLE,
   description: DESC,
   alternates: { canonical: SITE_URL },
+  // keywords メタは主要な検索エンジンに使われない。既存踏襲で置いているだけで、
+  // ここを増やしても順位には効かない（効くのは本文とタイトル）。
   keywords: [
     "ハンドメイド",
     "価格",
@@ -52,7 +58,7 @@ export const metadata: Metadata = {
     description: DESC,
     type: "website",
     locale: "ja_JP",
-    siteName: "ねだんの工房",
+    siteName: SITE_NAME,
     url: SITE_URL,
     images: [
       {
@@ -81,7 +87,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             描画するのは上の静的オブジェクトだけで、外部入力は混ぜない。 */}
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+          dangerouslySetInnerHTML={{ __html: toJsonLd(JSON_LD) }}
         />
         {/* アクセス解析（cookieless・秘密キー不要）。全プロダクト共通の単一 GoatCounter
             サイトに集約し、製品ごとの数値は path で区別される。公開タグは秘密ではない。 */}

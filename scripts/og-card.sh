@@ -63,6 +63,12 @@ if [ "$bytes" -lt 50000 ]; then
   exit 1
 fi
 
+# 原版のハッシュを原版の隣に置く。og-card.html を直したのに書き出しを忘れると
+# （＝古い PNG が公開され続けると）ここがズレるので、test/guards.test.mjs が検出する。
+# macOS のフォントに依存するため CI で PNG を再生成して比較することはできない。
+# public/ ではなく scripts/ に置く: これは開発用の不変量で、公開物に混ぜる理由がない。
+shasum -a 256 scripts/og-card.html | awk '{print $1}' > scripts/og-card.html.sha256
+
 echo "書き出しました: public/og.png (${width}x${height}, ${bytes} bytes)"
 echo "※ 拡大して目視で確認してください:"
 echo "   - 麻ひもが穴を通っているか（端がクラフト地の上に出ていないか）"

@@ -13,6 +13,8 @@ import {
   makeCustomMarketplace,
 } from "../lib/marketplaces.mjs";
 import { encodeShareParams, decodeShareParams } from "../lib/share.mjs";
+import { FAQ, FAQ_GROUPS } from "../lib/faq.mjs";
+import { toJsonLd } from "../lib/json-ld.mjs";
 
 /** 文字列入力を非負の数値に変換（空欄・不正値は 0）。 */
 function num(v: string): number {
@@ -20,20 +22,20 @@ function num(v: string): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-const FAQ = [
-  {
-    q: "手数料の数字は最新ですか？",
-    a: "各サービスが公表している一般的な区分をもとにした参考値です。プランや時期で変わるため、正確な金額は各サービスの公式ページでご確認ください。ぴったり合わせたいときは「じぶんで入力」で率と固定手数料を直接指定できます。",
-  },
-  {
-    q: "計算のしくみは？",
-    a: "受け取りたい額（材料費＋工賃＋送料＝原価に、目標の利益をのせた金額）を先に決め、そこへ販売所の手数料を上乗せして「いくらで並べれば手取りが目標に届くか」を逆算しています。",
-  },
-  {
-    q: "確定申告や帳簿づけにも使えますか？",
-    a: "このツールは値付けの計算を助けるもので、税務や会計の助言ではありません。複数の商品をまとめて保存したり、費目を分けて書き出す機能は、別のツールとして準備しています。",
-  },
-];
+// 画面に出している Q&A をそのまま機械可読にする。表示と同じ FAQ 配列だけを使う
+// （画面に無い内容をマークアップするのはガイドライン違反）。
+// なお FAQ のリッチリザルト表示は権威性の高いサイトに絞られており、この製品の検索結果に
+// Q&A が出ることは期待していない。ここの価値は検索以外の読み手（AI 回答エンジン等）と、
+// 何より画面に載った本文そのものにある。
+const FAQ_LD = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
 
 export default function Home() {
   const [materialCost, setMaterialCost] = useState("500");
@@ -638,18 +640,33 @@ export default function Home() {
             </span>
             <span>
               表示金額は入力と参考手数料をもとにした目安です。手数料率はプランや時期で変わるため、
-              最新の値は各サービスの公式ページでご確認ください。断定的な収益を保証するものではありません。
+              最新の値は各サービスの公式ページでご確認ください。売れ行きや収益を保証するものではありません。
             </span>
           </div>
         </section>
 
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: toJsonLd(FAQ_LD) }}
+        />
         <section className="faq wrap-narrow" aria-labelledby="faq-title">
-          <h2 id="faq-title">よくある質問</h2>
-          {FAQ.map((f) => (
-            <details key={f.q}>
-              <summary>{f.q}</summary>
-              <p>{f.a}</p>
-            </details>
+          <h2 id="faq-title">値付けのよくある質問</h2>
+          <p className="faq-lead">
+            {"「原価の何倍で売る？」「工賃は時給いくら？」。作りはじめた人がつまずきやすいところを、計算のしかたと一緒にまとめました。"}
+          </p>
+          {/* 値付けの考え方と、このツール自体の話は別のものなので群に分ける。
+              先頭の1件だけ開いておく（全部畳むと見出しの列に見えて、中身があること
+              自体が伝わらない）。開いた行は値札の地色を敷いて、同じ一覧の一行だと分かるようにする。 */}
+          {FAQ_GROUPS.map((group, gi) => (
+            <div className="faq-group" key={group.title}>
+              <h3>{group.title}</h3>
+              {group.items.map((f, i) => (
+                <details key={f.q} open={gi === 0 && i === 0}>
+                  <summary>{f.q}</summary>
+                  <p>{f.a}</p>
+                </details>
+              ))}
+            </div>
           ))}
         </section>
       </main>
