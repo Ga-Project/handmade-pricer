@@ -965,3 +965,305 @@ details p {
   white-space: nowrap;
   border: 0;
 }
+
+/* ── 材料ごとの計算（まとめ買いから「使う分だけ」を出す） ───────────────── */
+
+/* 見出しと入れ方の切り替えを同じ行に置く。
+   .field > .label の余白指定は直下の子だけに効くので、ここで同じ体裁を与え直す。 */
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
+}
+.label-row > .label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-bottom: 0;
+}
+
+/* 入れ方の切り替え（まとめて / 材料ごと）。押されている側を下げ札の地色で示す。 */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--sunken);
+  /* 既存の入力欄（.input-affix / select.plain）と同じ枠線の強さに揃える。
+     --seam だと面が地とほぼ同化して（対パネル 1.08）、押されていない側の
+     当たり判定の範囲が読み取れない。 */
+  border: 1.5px solid var(--seam-strong);
+  border-radius: var(--r-pill);
+}
+.seg-btn {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: transparent;
+  /* この土台が約束している 44px のタッチ目標を、切り替えでも割らない。 */
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-pill);
+  transition: background-color 0.15s, color 0.15s;
+}
+.seg-btn:hover {
+  color: var(--ink);
+}
+.seg-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+/* 既定のリング色は --accent で、押されている側の地色と同じになり
+   「ピルが少し太った」だけに見える。押されている側だけ色をずらす。 */
+.seg-btn[aria-pressed="true"]:focus-visible {
+  outline-color: var(--ink);
+}
+
+/* 材料の一覧。手数料の「じぶんで入力」(.custombox) と同じ、破線で囲った作業面。 */
+.matbox {
+  padding: var(--sp-4);
+  border: 1.5px dashed var(--seam-strong);
+  border-radius: var(--r);
+  background: var(--paper-2);
+}
+.matlead {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  color: var(--ink-soft);
+}
+.matlead b {
+  color: var(--accent-ink);
+}
+.matlead small {
+  display: block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-cap);
+  color: var(--ink-dim);
+}
+
+/* 1材料 = 1枚の紙片。 */
+.matrow {
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  background: var(--card);
+  border: 1.5px solid var(--seam);
+  border-radius: var(--r-sm);
+}
+.matrow-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.matname {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 0.35rem 0;
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1.5px solid var(--seam);
+}
+.matname::placeholder {
+  font-weight: 500;
+  color: var(--ink-dim);
+}
+.matname:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+.matname:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.matdel {
+  flex: 0 0 auto;
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-cap);
+  color: var(--ink-soft);
+  background: transparent;
+  /* 面を持たず枠線だけが輪郭を示す操作なので、入力欄と同じ強さの線を使う。 */
+  border: 1.5px solid var(--seam-strong);
+  border-radius: var(--r-pill);
+  /* 44px のタッチ目標を確保する（囲みは小さく見せ、当たりだけ広げる）。 */
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--sp-3);
+}
+.matdel:hover {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* 買った値段・買った量・使う量・単位。
+   2列にしているのは見た目の好みではなく、桁が見えなくなるため。この欄は作業台側の
+   パネル（画面のおよそ半分）に入るので、4列にすると 1 枠が 60px 程度まで縮み、
+   "1800" と入れても "18" しか見えない（値は保持されるが利用者が確かめられない）。 */
+.matgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2) var(--sp-3);
+}
+/* 2列でも、¥ の接頭辞ぶんを引くと「買った値段」の枠は 68px しか残らず 1800 すら
+   見切れる。既存の .row2 と同じ境目で1列に落として桁を守る。 */
+@media (max-width: 460px) {
+  .matgrid {
+    grid-template-columns: 1fr;
+  }
+}
+.matcell {
+  display: block;
+  min-width: 0;
+}
+.matlab {
+  display: block;
+  margin-bottom: var(--sp-1);
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+/* グリッドの列幅より入力の固有幅（size 属性ぶん・既定 20 文字）が優先されると
+   セルからはみ出すので、min-width を 0 に落として列幅に従わせる。 */
+.matcell .input-affix input {
+  min-width: 0;
+}
+
+/* 単位の自由入力。行ヘッダに置く（買った量・使う量に共通の単位なので、
+   数値欄それぞれに接尾辞として出すと桁が見えなくなる＝2列にした理由と同じ問題）。
+   select.plain は要素型で限定された規則なので input には効かない。同じ見た目を与え直す。 */
+.matunit {
+  flex: 0 0 7rem;
+  width: 7rem;
+  text-align: center;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  border: 1.5px solid var(--seam-strong);
+  background: var(--sunken);
+  border-radius: var(--r);
+  padding: 0.7rem var(--sp-3);
+  min-height: 44px;
+}
+.matunit:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.matunit:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* その行の計算結果。金額だけ数字書体で少し大きく。 */
+.matcost {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  padding-top: var(--sp-2);
+  border-top: 1.5px dotted var(--seam);
+  font-size: var(--fs-cap);
+  color: var(--ink-soft);
+}
+.matcost b {
+  font-family: var(--num);
+  font-size: var(--fs-md);
+  /* --take は「作り手に残る分」（利益・手取り）だけに使う色。材料費は出ていく分なので
+     内訳の材料費（.legend .val の既定＝インク）と同じ扱いにする。
+     ここを緑にすると、同じ金額が左では「残る色」・右の内訳では「出ていく側」に並ぶ。 */
+  color: var(--ink);
+}
+.matcost-hint {
+  color: var(--ink-dim);
+}
+
+.matfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.matadd {
+  min-height: 44px;
+}
+.mattotal {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.mattotal b {
+  font-family: var(--num);
+  font-size: var(--fs-lg);
+  color: var(--ink);
+}
+
+/* 単位の換算をしないことの注意書き。例示より一段強く出す。
+   .matlead small (0,1,1) に負けないよう、クラス2つ (0,2,0) で指定する。 */
+.matlead .matnote {
+  margin-top: var(--sp-2);
+  color: var(--accent-ink);
+}
+.matlead .matnote b {
+  color: inherit;
+}
+
+/* 使う量が買った量を超えたときの注意（止めずに気づかせるだけ）。 */
+.matcost-warn {
+  flex: 1 1 100%;
+  color: var(--toll);
+  font-weight: 700;
+}
+
+/* 消した直後の取り消し。触る端末には hover が無いので誤タップの受け皿を用意する。 */
+.matundo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--accent-soft);
+  border: 1.5px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-cap);
+  color: var(--ink-soft);
+}
+.matundo-btn {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: transparent;
+  border: 1.5px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+}
+.matundo-btn:hover {
+  background: var(--card);
+}

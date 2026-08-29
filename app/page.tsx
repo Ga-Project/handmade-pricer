@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   computeResult,
   compareMarketplaces,
@@ -13,6 +13,15 @@ import {
   makeCustomMarketplace,
 } from "../lib/marketplaces.mjs";
 import { encodeShareParams, decodeShareParams } from "../lib/share.mjs";
+import {
+  UNIT_PRESETS,
+  toAmount,
+  makeLine,
+  lineCost,
+  totalMaterialCost,
+  encodeMaterials,
+  restoreMaterials,
+} from "../lib/materials.mjs";
 import { FAQ, FAQ_GROUPS } from "../lib/faq.mjs";
 import { toJsonLd } from "../lib/json-ld.mjs";
 
@@ -37,6 +46,15 @@ const FAQ_LD = {
   })),
 };
 
+type MaterialLine = {
+  id: string;
+  name: string;
+  unit: string;
+  price: string;
+  bought: string;
+  used: string;
+};
+
 export default function Home() {
   const [materialCost, setMaterialCost] = useState("500");
   const [workMinutes, setWorkMinutes] = useState("60");
@@ -48,6 +66,13 @@ export default function Home() {
   const [customFee, setCustomFee] = useState("10");
   const [customFixed, setCustomFixed] = useState("0");
   const [roundUnit, setRoundUnit] = useState("10");
+
+  // 材料費の入れ方。false=合計を1つの数で入れる / true=材料ごとに「買った量→使う量」で出す。
+  const [itemized, setItemized] = useState(false);
+  const [materials, setMaterials] = useState<MaterialLine[]>([]);
+  // 行の key 用の連番。並べ替え・削除で index を key にすると入力欄が取り違えられるため、
+  // 行ごとに不変の id を振る。
+  const nextLineId = useRef(1);
 
   // 共有ボタンの一時的な結果表示。"copied"=コピー成功 / "error"=クリップボード不可。
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">(
@@ -70,11 +95,92 @@ export default function Home() {
     if (s.customFee !== undefined) setCustomFee(s.customFee);
     if (s.customFixed !== undefined) setCustomFixed(s.customFixed);
     if (s.roundUnit !== undefined) setRoundUnit(s.roundUnit);
+    // 材料明細が載っている共有URLは、材料ごとの画面で開き直す。
+    // ただし URL が途中で切れていると行が減り、材料費が静かに下がったまま
+    // 「材料が揃った画面」に見えてしまう。同じURLの mc（共有時の合計）と
+    // 突き合わせ、合わないときは明細を採用せず、まとめて入力（mc の値）で開く。
+    if (s.materials !== undefined) {
+      const { lines, intact } = restoreMaterials(s.materials, s.materialCost) as {
+        lines: MaterialLine[];
+        intact: boolean;
+      };
+      if (intact) {
+        nextLineId.current = lines.length + 1;
+        setMaterials(lines);
+        setItemized(true);
+      }
+    }
+  }, []);
+
+  // 材料ごとの合計。まとめて入力のときは触らない（切り替えても入力が消えないよう別々に持つ）。
+  const materialsTotal = useMemo(
+    () => totalMaterialCost(materials),
+    [materials],
+  );
+  const effectiveMaterialCost = itemized ? materialsTotal : num(materialCost);
+
+  const addLine = useCallback(() => {
+    setMaterials((prev) => [
+      ...prev,
+      makeLine(nextLineId.current++, {
+        // 直前の行と同じ単位で続けることが多いので引き継ぐ。
+        unit: prev[prev.length - 1]?.unit ?? "cm",
+      }) as MaterialLine,
+    ]);
+  }, []);
+
+  const updateLine = useCallback(
+    (id: string, patch: Partial<MaterialLine>) => {
+      setMaterials((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+      );
+    },
+    [],
+  );
+
+  // 消した行を1件だけ覚えておき、すぐ戻せるようにする。
+  // 触る端末には hover が無く「消す」の警告色が出ないので、誤タップは現実に起きる。
+  // このアプリは行を保存しない（永続化なし）ため、消えたら本当に取り返せない。
+  const [undoable, setUndoable] = useState<{
+    line: MaterialLine;
+    index: number;
+  } | null>(null);
+
+  const removeLine = useCallback((id: string) => {
+    setMaterials((prev) => {
+      const index = prev.findIndex((l) => l.id === id);
+      if (index < 0) return prev;
+      const line = prev[index];
+      if (line) setUndoable({ line, index });
+      return prev.filter((l) => l.id !== id);
+    });
+  }, []);
+
+  const undoRemove = useCallback(() => {
+    setUndoable((u) => {
+      if (!u) return null;
+      setMaterials((prev) => {
+        const next = [...prev];
+        next.splice(Math.min(u.index, next.length), 0, u.line);
+        return next;
+      });
+      return null;
+    });
+  }, []);
+
+  // 材料ごとへ切り替えたとき、行が1つも無いと入れる場所が無いので空の行を出しておく。
+  const enableItemized = useCallback(() => {
+    setItemized(true);
+    setMaterials((prev) =>
+      prev.length > 0
+        ? prev
+        : [makeLine(nextLineId.current++) as MaterialLine],
+    );
   }, []);
 
   const inputs = useMemo(
     () => ({
-      materialCost: num(materialCost),
+      materialCost: effectiveMaterialCost,
       workMinutes: num(workMinutes),
       hourlyWage: num(hourlyWage),
       shipping: num(shipping),
@@ -82,7 +188,7 @@ export default function Home() {
       profitRate: num(profitPercent) / 100,
     }),
     [
-      materialCost,
+      effectiveMaterialCost,
       workMinutes,
       hourlyWage,
       shipping,
@@ -124,7 +230,10 @@ export default function Home() {
   const handleShare = useCallback(async () => {
     if (typeof window === "undefined") return;
     const query = encodeShareParams({
-      materialCost,
+      // 材料ごとに出しているときは、その合計を材料費として載せる。
+      // 明細（ml）を読めない古い共有URLの解釈でも、材料費の数字だけは一致する。
+      materialCost: itemized ? String(Math.round(materialsTotal)) : materialCost,
+      materials: itemized ? encodeMaterials(materials) : "",
       workMinutes,
       hourlyWage,
       shipping,
@@ -150,6 +259,9 @@ export default function Home() {
     }
   }, [
     materialCost,
+    itemized,
+    materials,
+    materialsTotal,
     workMinutes,
     hourlyWage,
     shipping,
@@ -232,24 +344,223 @@ export default function Home() {
                 材料と手間 <small>作品ひとつ分</small>
               </div>
 
-              <label className="field">
-                <span className="label">
-                  材料費 <span className="hint">生地・パーツ・箱など</span>
-                </span>
-                <span className="input-affix">
-                  <span className="pre" aria-hidden="true">
-                    ¥
+              <div className="field">
+                <div className="label-row">
+                  <span className="label">
+                    材料費 <span className="hint">生地・パーツ・箱など</span>
                   </span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    value={materialCost}
-                    onChange={(e) => setMaterialCost(e.target.value)}
-                    aria-label="材料費（円）"
-                  />
-                </span>
-              </label>
+                  <div className="seg" role="group" aria-label="材料費の入れ方">
+                    <button
+                      type="button"
+                      className="seg-btn"
+                      aria-pressed={!itemized}
+                      onClick={() => setItemized(false)}
+                    >
+                      まとめて
+                    </button>
+                    <button
+                      type="button"
+                      className="seg-btn"
+                      aria-pressed={itemized}
+                      onClick={enableItemized}
+                    >
+                      材料ごと
+                    </button>
+                  </div>
+                </div>
+
+                {!itemized ? (
+                  <span className="input-affix">
+                    <span className="pre" aria-hidden="true">
+                      ¥
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={materialCost}
+                      onChange={(e) => setMaterialCost(e.target.value)}
+                      aria-label="材料費（円）"
+                    />
+                  </span>
+                ) : (
+                  <div className="matbox">
+                    <p className="matlead">
+                      まとめ買いした材料から、この作品で
+                      <b>使う分だけ</b>を出します。
+                      <small>
+                        例: ¥800 で 1000cm 買ったリボンを 30cm 使う → ¥24
+                      </small>
+                      <small className="matnote">
+                        買った量と使う量は<b>同じ単位</b>でそろえてください（単位の換算はしません）。
+                      </small>
+                    </p>
+
+                    <datalist id="unit-presets">
+                      {UNIT_PRESETS.map((u: string) => (
+                        <option key={u} value={u} />
+                      ))}
+                    </datalist>
+
+                    {materials.map((line, i) => {
+                      const cost = lineCost(line);
+                      // ¥1 未満を ¥1 と丸めて出すと、¥0.5 の行 2 本が「¥1 と ¥1 で合計 ¥1」に
+                      // 見えて数字が合わなくなる。1円未満のときだけ小数で見せる。
+                      // 単位の換算は利用者にお願いしているので、1000 と 10 の打ち間違いが
+                      // そのまま100倍の値段になる。その誤りが表に出る唯一の痕跡が
+                      // 「買った量より使う量が多い」。複数袋を使う正当な場合もあるので
+                      // 止めずに注意だけ出す。
+                      const overUse =
+                        toAmount(line.bought) > 0 &&
+                        toAmount(line.used) > toAmount(line.bought);
+                      const costLabel =
+                        cost > 0 && cost < 1
+                          ? `¥${cost.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`
+                          : formatYen(cost);
+                      const unit = line.unit || "";
+                      return (
+                        <div className="matrow" key={line.id}>
+                          <div className="matrow-head">
+                            <input
+                              className="matname"
+                              type="text"
+                              value={line.name}
+                              placeholder={`材料 ${i + 1}`}
+                              aria-label={`材料 ${i + 1} の名前`}
+                              onChange={(e) =>
+                                updateLine(line.id, { name: e.target.value })
+                              }
+                            />
+                            <input
+                              className="matunit"
+                              type="text"
+                              list="unit-presets"
+                              value={line.unit}
+                              placeholder="単位"
+                              aria-label={`材料 ${i + 1} の単位（数量に共通）`}
+                              onChange={(e) =>
+                                updateLine(line.id, { unit: e.target.value })
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="matdel"
+                              onClick={() => removeLine(line.id)}
+                              aria-label={`材料 ${i + 1}${
+                                line.name ? `（${line.name}）` : ""
+                              }を消す`}
+                            >
+                              消す
+                            </button>
+                          </div>
+
+                          <div className="matgrid">
+                            <label className="matcell">
+                              <span className="matlab">買った値段</span>
+                              <span className="input-affix">
+                                <span className="pre" aria-hidden="true">
+                                  ¥
+                                </span>
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  value={line.price}
+                                  aria-label={`材料 ${i + 1} の買った値段（円）`}
+                                  onChange={(e) =>
+                                    updateLine(line.id, {
+                                      price: e.target.value,
+                                    })
+                                  }
+                                />
+                              </span>
+                            </label>
+                            <label className="matcell">
+                              <span className="matlab">
+                                買った量{unit ? `（${unit}）` : ""}
+                              </span>
+                              <span className="input-affix">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  value={line.bought}
+                                  aria-label={`材料 ${i + 1} の買った量`}
+                                  onChange={(e) =>
+                                    updateLine(line.id, {
+                                      bought: e.target.value,
+                                    })
+                                  }
+                                />
+                              </span>
+                            </label>
+                            <label className="matcell">
+                              <span className="matlab">
+                                使う量{unit ? `（${unit}）` : ""}
+                              </span>
+                              <span className="input-affix">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  value={line.used}
+                                  aria-label={`材料 ${i + 1} の使う量`}
+                                  onChange={(e) =>
+                                    updateLine(line.id, { used: e.target.value })
+                                  }
+                                />
+                              </span>
+                            </label>
+                          </div>
+
+                          <p className="matcost">
+                            この作品ぶん <b>{costLabel}</b>
+                            {cost === 0 && (
+                              <span className="matcost-hint">
+                                値段・買った量・使う量を入れると出ます
+                              </span>
+                            )}
+                            {overUse && (
+                              <span className="matcost-warn">
+                                使う量が買った量より多くなっています。単位はそろっていますか
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      );
+                    })}
+
+                    {undoable && (
+                      <p className="matundo">
+                        <span>
+                          「{undoable.line.name || "名前のない材料"}」を消しました
+                        </span>
+                        <button
+                          type="button"
+                          className="matundo-btn"
+                          onClick={undoRemove}
+                        >
+                          元に戻す
+                        </button>
+                      </p>
+                    )}
+
+                    <div className="matfoot">
+                      <button
+                        type="button"
+                        className="btn btn-ghost matadd"
+                        onClick={addLine}
+                      >
+                        ＋ 材料をふやす
+                      </button>
+                      <p className="mattotal">
+                        材料費の合計
+                        <b>{formatYen(materialsTotal)}</b>
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="row2">
                 <label className="field">
