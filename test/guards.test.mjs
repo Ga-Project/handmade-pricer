@@ -80,10 +80,22 @@ function jsonLdBlocks(html) {
 /**
  * markup の className から「1要素ぶんの class 名の集合」を取り出す。
  *
- * 直値 className="a b" と、補間を含まないテンプレートリテラル
- * className={`a b`} の両方を同じ集合として扱う（この2つは機能的に同じもので、
- * 片方だけを見ると書き方を変えただけで検査が嘘の結果を出す）。
- * 補間を含むテンプレート（`hangtag${…}`）はクラス名が実行時に決まるので対象外。
+ * 扱う書き方は3つ。いずれも「1要素に付きうる class 名の集合」として同じに扱う
+ * （機能的に同じものを片方だけ見ると、書き方を変えただけで検査が嘘の結果を出す。
+ *  実際に、直値だけを見ていたため className={`btn btn-ghost matadd`} への
+ *  書き換えで「.btn と併用していない」と真実と逆の主張をして落ちた）。
+ *
+ *   1. className="a b"
+ *   2. className={`a b`}          … 補間を含まないテンプレートリテラル
+ *   3. className={cond ? "a" : "b"} … バッククォートを含まない式の中のリテラル
+ *
+ * **補間を含むテンプレート（`hangtag${…}`）は対象外**。クラス名が実行時に決まり、
+ * 静的には確定できない。`hangtag` は `${` の直後に接しているので、
+ * 結果が `hangtag` なのか `hangtagX` なのかもソースからは分からない。
+ * 断片を拾いにいくと誤検出になる（実際 `? "" : " empty"` から ":" を拾って誤爆した）。
+ * 除外は `[^`$]*` が `$` を跨げないことによる構造的なもので、
+ * 補間には必ず `${` が要るため、断片が漏れ出る経路は存在しない。
+ * この射程を広げるには JSX を構文として読む必要がある（別チケット）。
  */
 function classNameGroups(markup) {
   const groups = [];
@@ -92,6 +104,11 @@ function classNameGroups(markup) {
   }
   for (const m of markup.matchAll(/className=\{`([^`$]*)`\}/g)) {
     groups.push(m[1].split(/\s+/).filter(Boolean));
+  }
+  for (const m of markup.matchAll(/className=\{([^`}]*?)\}/g)) {
+    for (const lit of m[1].matchAll(/"([^"]+)"|'([^']+)'/g)) {
+      groups.push((lit[1] ?? lit[2]).split(/\s+/).filter(Boolean));
+    }
   }
   return groups;
 }
@@ -407,23 +424,11 @@ test("画面が使っている class がスタイルシートに定義されて�
     .map((f) => read(f))
     .join("\n");
 
-  const used = new Set();
-  // 直値の className="a b"
-  for (const m of sources.matchAll(/className="([^"{}]+)"/g)) {
-    for (const c of m[1].split(/\s+/)) if (c) used.add(c);
-  }
-  // className={…} の中に直接書かれた文字列リテラル。
-  // 実測で className={cond ? "matcost" : "matnope"} が素通りしていた。
-  //
-  // **射程**: バッククォートを含まない式だけを見る。テンプレートリテラル
-  // （`hangtag${…}` のような組み立て）は、クラス名が補間をまたいで作られるので
-  // 静的には確定できず、断片を拾うと逆に誤検出になる（実際 `?  "" : " empty"` から
-  // ":" を拾って誤爆した）。この形の class は本検査の対象外。
-  for (const m of sources.matchAll(/className=\{([^`}]*?)\}/g)) {
-    for (const lit of m[1].matchAll(/"([^"]+)"|'([^']+)'/g)) {
-      for (const c of (lit[1] ?? lit[2]).split(/\s+/)) if (c) used.add(c);
-    }
-  }
+  // 抽出は 44px の併用検査と同じ classNameGroups を使う。
+  // 別々の抽出器を持つと、片方だけ射程が広がって食い違う（実際に食い違っていた）。
+  // 補間を含むテンプレート（`hangtag${…}`）が対象外である点も共通
+  // ＝ hangtag / minitag / empty / best は**この検査でも見ていない**。
+  const used = new Set(classNameGroups(sources).flat());
   assert.ok(used.size > 10, `class を拾えていません（${used.size} 件）`);
 
   // 複合セレクタ（.matlead .matnote）でも定義とみなすので、
