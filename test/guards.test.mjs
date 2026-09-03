@@ -27,6 +27,18 @@ function requireBuild() {
     existsSync(join(OUT, "index.html")),
     "out/index.html がありません。先に `pnpm build` を実行してください。",
   );
+  // 存在だけを見ると、**古い out/ に対して緑になる**。実際に、ソースを直した直後に
+  // ビルドし忘れたまま検査が通る窓が生まれ、その状態で判断しかけたことがある。
+  // existsSync は新しい out/ と古い out/ を区別しないので、鮮度も見る。
+  // CI は build → test の順なので、これはローカル実行を守るための検査。
+  const newestSource = ["app", "lib"]
+    .flatMap((d) => outFiles(/\.(tsx?|mjs|css)$/, join(ROOT, d)))
+    .reduce((max, f) => Math.max(max, statSync(f).mtimeMs), 0);
+  const built = statSync(join(OUT, "index.html")).mtimeMs;
+  assert.ok(
+    built >= newestSource,
+    `out/ がソースより古いです（ビルドし直してください）。out/index.html=${new Date(built).toISOString()} / 最新ソース=${new Date(newestSource).toISOString()}`,
+  );
 }
 
 /** out/ 配下の該当拡張子のファイルを再帰的に集める。 */
@@ -222,8 +234,10 @@ test("配信されるクライアントチャンクに禁止表現が載って�
 // 見るのは2方向:
 //   (a) min-height を宣言している操作部品が 44px を割っていないか
 //   (b) 操作部品として列挙したセレクタが、44px を得る手段を実際に持っているか
-// (b) が要るのは、宣言ごと消える回帰を (a) が見られないため
-// （実際に .matadd { min-height: 44px } が消えても (a) だけでは緑のままだった）。
+// (b) が要るのは、宣言ごと消える回帰を (a) が見られないため。
+// なお .matadd は常に className="btn btn-ghost matadd" で描画されるので、
+// 自前の min-height は冗長であり、併用先の .btn を見るのが意味的に正しい
+// （消えても実害が無かったのはそのため）。
 // 44px の得かたは2通り: 自分で min-height を宣言する / ::before で当たりを広げる /
 // 44px を宣言している他のクラスと併用する（例 .matadd は .btn と併用）。
 // 自分では 44px を宣言せず、44px を持つ共有クラスと併用して満たす部品。
@@ -240,6 +254,10 @@ const TOUCH_TARGETS = [
 
 test("操作部品の min-height が 44px の宣言を割っていない", () => {
   const css = read("app/globals.css");
+  const markup = ["app/page.tsx", "app/not-found.tsx", "app/layout.tsx"]
+    .filter((f) => existsSync(join(ROOT, f)))
+    .map((f) => read(f))
+    .join("\n");
   // セレクタの捕捉は直前の } 以降すべてを含むので、コメントが混ざると
   // セレクタ名の一致比較が成立しない（実際 .matunit / .btn を取り逃した）。
   const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -322,8 +340,18 @@ test("操作部品の min-height が 44px の宣言を割っていない", () =>
       ).test(bare);
       if (!ok) lost.push(`${sel}（::before の当たり 44px が無い）`);
     } else if (via === "btn") {
-      // .btn と併用して 44px を得る部品。.btn 側が生きていることを見る。
-      if (declaredMinHeight(".btn") !== 44) lost.push(`${sel}（併用する .btn の 44px が無い）`);
+      // .btn と併用して 44px を得る部品。併用先が生きていることに加え、
+      // **markup が本当に併用しているか**も見る。ここを見ないと、
+      // className から btn を外した瞬間に高さの供給元が消えるのに緑のままになる。
+      if (declaredMinHeight(".btn") !== 44) {
+        lost.push(`${sel}（併用する .btn の 44px が無い）`);
+      }
+      const cls = sel.replace(/^\./, "");
+      const usedWithBtn = [...markup.matchAll(/className="([^"{}]+)"/g)].some((m) => {
+        const names = m[1].split(/\s+/);
+        return names.includes(cls) && names.includes("btn");
+      });
+      if (!usedWithBtn) lost.push(`${sel}（markup が .btn と併用していない）`);
     }
   }
   assert.deepEqual(lost, [], "44px を得る手段を失った操作部品があります");
@@ -332,8 +360,10 @@ test("操作部品の min-height が 44px の宣言を割っていない", () =>
 // --- markup が使う class が CSS に定義されていること ------------------------
 // app/globals.css の一部を編集したとき、隣接するブロックを巻き込んで消しても
 // 型でも lint でも build でも落ちず、テストも緑のまま通る。実際に一度、
-// .matcost / .matfoot / .mattotal / .matadd / .matlead .matnote を丸ごと失った
-// ビルドが「実ブラウザで全項目 ok」と判定された（見ていたのは新設要素だけだった）。
+// .matcost / .matcost b / .matcost-hint / .matfoot / .matadd / .mattotal /
+// .mattotal b / .matlead .matnote / .matlead .matnote b の **9ブロック**を
+// 失ったビルドが「実ブラウザで全項目 ok」と判定された
+// （見ていたのは新設要素だけで、既存部分の視覚回帰を見ていなかった）。
 // className と CSS の対応を見れば、この種の事故は機械的に落ちる。
 test("画面が使っている class がスタイルシートに定義されている", () => {
   // コメントを剥がしてから照合する。生の CSS を見ると、規則を消しても
