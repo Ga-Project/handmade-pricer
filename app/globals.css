@@ -1169,6 +1169,64 @@ details p {
   outline-offset: 2px;
 }
 
+/* 単位の早押し。datalist は気づけないので常に見えるチップで出す。
+   自由入力（.matunit）は残すので、これは補助であって唯一の入口ではない。 */
+.matunits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: calc(var(--sp-2) * -1) 0 var(--sp-3);
+}
+.matunit-chip {
+  font: inherit;
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1.5px solid var(--seam-strong);
+  border-radius: var(--r-pill);
+  padding: 0.4rem 0.7rem;
+  min-height: 32px;
+  cursor: pointer;
+}
+.matunit-chip:hover {
+  color: var(--accent-ink);
+  border-color: var(--accent-line);
+}
+.matunit-chip[aria-pressed="true"] {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.matunit-chip:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 材料費がまだ ¥0 のときの案内。
+   「まとめて」から切り替えると売値が黙って下がるので、その理由と戻し方をここで言う。 */
+.matempty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  color: var(--ink-soft);
+  background: var(--sunken);
+  border-left: 3px solid var(--accent-line);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.matempty b {
+  color: var(--accent-ink);
+}
+.matempty-back {
+  color: var(--ink-dim);
+  font-size: var(--fs-cap);
+}
+
 /* その行の計算結果。金額だけ数字書体で少し大きく。 */
 .matcost {
   display: flex;

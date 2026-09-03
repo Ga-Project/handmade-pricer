@@ -22,6 +22,7 @@ import {
   encodeMaterials,
   restoreMaterials,
 } from "../lib/materials.mjs";
+import { LEAD, EMPTY_NOTICE, UNIT_PICKER } from "../lib/itemized-copy.mjs";
 import { FAQ, FAQ_GROUPS } from "../lib/faq.mjs";
 import { toJsonLd } from "../lib/json-ld.mjs";
 
@@ -386,15 +387,31 @@ export default function Home() {
                 ) : (
                   <div className="matbox">
                     <p className="matlead">
-                      まとめ買いした材料から、この作品で
-                      <b>使う分だけ</b>を出します。
-                      <small>
-                        例: ¥800 で 1000cm 買ったリボンを 30cm 使う → ¥24
-                      </small>
+                      {LEAD.head}
+                      <b>{LEAD.emphasis}</b>
+                      {LEAD.tail}
+                      <small>{LEAD.example}</small>
                       <small className="matnote">
-                        買った量と使う量は<b>同じ単位</b>でそろえてください（単位の換算はしません）。
+                        {LEAD.unitNote.head}
+                        <b>{LEAD.unitNote.emphasis}</b>
+                        {LEAD.unitNote.tail}
                       </small>
                     </p>
+
+                    {/*
+                      「まとめて」から切り替えた直後は行が空なので材料費が ¥0 になり、
+                      右の売値と手取りが黙って下がる。行ごとのヒントは行の中にしか出ないので、
+                      「なぜ下がったか」と「戻せること」はここ（欄の頭）で伝える。
+                    */}
+                    {materialsTotal === 0 && (
+                      <p className="matempty" role="status">
+                        <b>{EMPTY_NOTICE.title}</b>
+                        <span>{EMPTY_NOTICE.body}</span>
+                        <span className="matempty-back">
+                          {EMPTY_NOTICE.back}
+                        </span>
+                      </p>
+                    )}
 
                     <datalist id="unit-presets">
                       {UNIT_PRESETS.map((u: string) => (
@@ -452,6 +469,33 @@ export default function Home() {
                             >
                               消す
                             </button>
+                          </div>
+
+                          {/*
+                            単位は datalist にも入れてあるが、datalist はフォーカスするまで
+                            何の合図も出さず、読み上げ上もただの textbox なので、
+                            候補があること自体に気づけない。常に見えるチップで出す。
+                            自由入力は残すので、一覧に無い単位もそのまま書ける。
+                          */}
+                          <div
+                            className="matunits"
+                            role="group"
+                            aria-label={UNIT_PICKER.groupLabel(i + 1)}
+                          >
+                            {UNIT_PRESETS.map((u: string) => (
+                              <button
+                                key={u}
+                                type="button"
+                                className="matunit-chip"
+                                aria-pressed={line.unit === u}
+                                aria-label={UNIT_PICKER.optionLabel(i + 1, u)}
+                                onClick={() =>
+                                  updateLine(line.id, { unit: u })
+                                }
+                              >
+                                {u}
+                              </button>
+                            ))}
                           </div>
 
                           <div className="matgrid">
