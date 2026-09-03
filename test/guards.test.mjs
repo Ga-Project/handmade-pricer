@@ -31,9 +31,17 @@ function requireBuild() {
   // ビルドし忘れたまま検査が通る窓が生まれ、その状態で判断しかけたことがある。
   // existsSync は新しい out/ と古い out/ を区別しないので、鮮度も見る。
   // CI は build → test の順なので、これはローカル実行を守るための検査。
-  const newestSource = ["app", "lib"]
-    .flatMap((d) => outFiles(/\.(tsx?|mjs|css)$/, join(ROOT, d)))
-    .reduce((max, f) => Math.max(max, statSync(f).mtimeMs), 0);
+  // ビルド結果を左右するものはすべて含める。app/ と lib/ だけを見ていると、
+  // next.config.mjs（basePath 等）を直してビルドし忘れても緑になる。
+  const configFiles = ["next.config.mjs", "package.json"]
+    .map((f) => join(ROOT, f))
+    .filter((f) => existsSync(f));
+  const newestSource = [
+    ...["app", "lib", "public"]
+      .filter((d) => existsSync(join(ROOT, d)))
+      .flatMap((d) => outFiles(/\.(tsx?|mjs|css|png|svg|ico|txt)$/, join(ROOT, d))),
+    ...configFiles,
+  ].reduce((max, f) => Math.max(max, statSync(f).mtimeMs), 0);
   const built = statSync(join(OUT, "index.html")).mtimeMs;
   assert.ok(
     built >= newestSource,
@@ -67,6 +75,25 @@ function jsonLdBlocks(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)].map((m) =>
     JSON.parse(m[1]),
   );
+}
+
+/**
+ * markup の className から「1要素ぶんの class 名の集合」を取り出す。
+ *
+ * 直値 className="a b" と、補間を含まないテンプレートリテラル
+ * className={`a b`} の両方を同じ集合として扱う（この2つは機能的に同じもので、
+ * 片方だけを見ると書き方を変えただけで検査が嘘の結果を出す）。
+ * 補間を含むテンプレート（`hangtag${…}`）はクラス名が実行時に決まるので対象外。
+ */
+function classNameGroups(markup) {
+  const groups = [];
+  for (const m of markup.matchAll(/className="([^"{}]+)"/g)) {
+    groups.push(m[1].split(/\s+/).filter(Boolean));
+  }
+  for (const m of markup.matchAll(/className=\{`([^`$]*)`\}/g)) {
+    groups.push(m[1].split(/\s+/).filter(Boolean));
+  }
+  return groups;
 }
 
 /**
@@ -347,11 +374,15 @@ test("操作部品の min-height が 44px の宣言を割っていない", () =>
         lost.push(`${sel}（併用する .btn の 44px が無い）`);
       }
       const cls = sel.replace(/^\./, "");
-      const usedWithBtn = [...markup.matchAll(/className="([^"{}]+)"/g)].some((m) => {
-        const names = m[1].split(/\s+/);
-        return names.includes(cls) && names.includes("btn");
-      });
-      if (!usedWithBtn) lost.push(`${sel}（markup が .btn と併用していない）`);
+      // 正しい不変条件は「その class を持つ**すべての**要素が btn を併用している」。
+      // some() だと、1つでも併用している要素があれば、併用していない別の要素が
+      // 44px を失っていても緑になる。
+      const groups = classNameGroups(markup).filter((names) => names.includes(cls));
+      if (groups.length === 0) {
+        lost.push(`${sel}（markup に現れない＝この項目が古い）`);
+      } else if (!groups.every((names) => names.includes("btn"))) {
+        lost.push(`${sel}（markup が .btn と併用していない）`);
+      }
     }
   }
   assert.deepEqual(lost, [], "44px を得る手段を失った操作部品があります");
