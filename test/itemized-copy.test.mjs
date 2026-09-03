@@ -11,6 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import * as COPY from "../lib/itemized-copy.mjs";
 import {
   LEAD,
   EMPTY_NOTICE,
@@ -31,7 +32,12 @@ import {
 } from "../lib/copy-rules.mjs";
 
 /** 画面に出る静的な文言（構造から導出）。 */
-const STATIC_STRINGS = collectStrings(COPY_OBJECTS);
+// ROW_LABELS も対象に含める。関数だけのつもりでも文字列フィールドを足されうるので、
+// 「関数だから collectStrings では拾えない」を前提にしない。
+const STATIC_STRINGS = [
+  ...collectStrings(COPY_OBJECTS),
+  ...collectStrings(ROW_LABELS),
+];
 
 /** 関数で組み立てる文言を、登録された呼び出し例で実体化したもの。 */
 const TEMPLATED_STRINGS = [
@@ -132,4 +138,37 @@ test("案内は行の存在を前提にしない", () => {
   for (const w of ["下の行", "上の行"]) {
     assert.ok(!text.includes(w), `行の存在を前提にする表現「${w}」が含まれる`);
   }
+});
+
+// --- 唯一残る手書き一覧（COPY_OBJECTS）に登録漏れが無いこと -----------------
+// 文字列は COPY_OBJECTS から構造的に導出するので、フィールドを足す分には安全。
+// ただし COPY_OBJECTS そのものは手書きの登録リストで、
+// 「新しい定数を export して page.tsx で使い、登録を忘れる」経路だけが残る。
+// この増分自身が ROW / UNDO / FOOT という新定数を3つ足しているので、
+// 起きやすさは実証済み。モジュール全体を走査して閉じる。
+
+test("文言を持つ export はすべて検査対象に登録されている", () => {
+  // 一覧そのものとテンプレート定義は、登録対象ではなく仕組みの側。
+  const META = new Set([
+    "COPY_OBJECTS",
+    "COPY_TEMPLATES",
+    "ROW_LABEL_TEMPLATES",
+  ]);
+  // 登録済みとみなす実体（参照で比較する）。
+  const registered = new Set([...Object.values(COPY_OBJECTS), ROW_LABELS]);
+
+  const unregistered = [];
+  for (const [name, value] of Object.entries(COPY)) {
+    if (META.has(name)) continue;
+    // 文字列も関数も持たない export（数値・真偽値など）は検査の対象外。
+    const hasCopy =
+      collectStrings(value).length > 0 || collectFunctions(value).length > 0;
+    if (!hasCopy) continue;
+    if (!registered.has(value)) unregistered.push(name);
+  }
+  assert.deepEqual(
+    unregistered.sort(),
+    [],
+    "COPY_OBJECTS（または ROW_LABELS）に登録されていない文言 export があります",
+  );
 });

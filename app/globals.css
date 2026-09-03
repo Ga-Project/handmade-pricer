@@ -1214,8 +1214,9 @@ details p {
   cursor: pointer;
 }
 /* 見た目は値札らしく小さいまま、当たりだけ 44px へ広げる。
-   :7 と :1011 が土台として約束している 44px を、この部品でも割らない
-   （.matdel と同じ手法）。 */
+   :7 と :1011 が土台として約束している 44px を、この部品でも割らない。
+   .matdel は min-height を直接 44px にしているが、チップは6個並ぶので
+   囲みまで 44px にすると帯が画面を食う。ここだけ当たりを別に確保する。 */
 .matunit-chip::before {
   content: "";
   position: absolute;
@@ -1258,11 +1259,20 @@ details p {
   line-height: var(--lh-base);
   color: var(--ink-soft);
   background: var(--kraft);
-  border: 1.5px dashed var(--kraft-edge);
+  /* --kraft-edge は対 --kraft 1.36:1 でダッシュが地に溶け、ただの板に見えた。
+     縫い目として読めるところまで線を強くする。 */
+  border: 1.5px dashed var(--seam-strong);
   border-radius: var(--r-sm);
 }
+/* 中身が無いときも描画は保つ（display:none だとアクセシビリティツリーから外れ、
+   中身が入った瞬間が「既存ライブ領域の更新」ではなく「新規挿入」になって
+   読み上げが発火しない）。参照元の .share-status と同じ思想で、寸法だけ 0 にする。 */
 .matempty:empty {
-  display: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  gap: 0;
 }
 .matempty b {
   color: var(--ink);
@@ -1272,6 +1282,67 @@ details p {
   font-size: var(--fs-cap);
 }
 
+/* その行の計算結果。金額だけ数字書体で少し大きく。 */
+.matcost {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  padding-top: var(--sp-2);
+  border-top: 1.5px dotted var(--seam);
+  font-size: var(--fs-cap);
+  color: var(--ink-soft);
+}
+.matcost b {
+  font-family: var(--num);
+  font-size: var(--fs-md);
+  /* --take は「作り手に残る分」（利益・手取り）だけに使う色。材料費は出ていく分なので
+     内訳の材料費（.legend .val の既定＝インク）と同じ扱いにする。
+     ここを緑にすると、同じ金額が左では「残る色」・右の内訳では「出ていく側」に並ぶ。 */
+  color: var(--ink);
+}
+.matcost-hint {
+  color: var(--ink-dim);
+}
+
+.matfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.matadd {
+  min-height: 44px;
+}
+.mattotal {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.mattotal b {
+  font-family: var(--num);
+  font-size: var(--fs-lg);
+  color: var(--ink);
+}
+
+/* 単位の換算をしないことの注意書き。例示より一段強く出す。
+   .matlead small (0,1,1) に負けないよう、クラス2つ (0,2,0) で指定する。 */
+.matlead .matnote {
+  margin-top: var(--sp-2);
+  color: var(--accent-ink);
+}
+.matlead .matnote b {
+  color: inherit;
+}
+
+/* 使う量が買った量を超えたときの注意（止めずに気づかせるだけ）。 */
 .matcost-warn {
   flex: 1 1 100%;
   color: var(--toll);

@@ -57,6 +57,22 @@ function jsonLdBlocks(html) {
   );
 }
 
+/**
+ * 配信されるクライアントスクリプトを1つの文字列として読む。
+ * minifier は非 ASCII を \xNN / \uNNNN のエスケープで書き出すことがある
+ * （実際 ¥ は \xa5 になる）ので、素の文字列と突き合わせられるよう先に戻す。
+ */
+function clientBundleText() {
+  const scripts = outFiles(/\.js$/, join(OUT, "_next"));
+  assert.ok(scripts.length > 0, "out/_next にクライアントスクリプトがありません");
+  const unescapeJs = (src) =>
+    src
+      .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  return scripts.map((f) => unescapeJs(readFileSync(f, "utf8"))).join("\n");
+}
+
 // --- サーバー専用モジュールがクライアントへ漏れていないこと ---------------
 // app/site.ts は公開 URL を process.env から組む。client component から（間接的にでも）
 // 読まれるとクライアントバンドルに入り、basePath を落とした URL が静かに出来上がる。
@@ -150,23 +166,20 @@ test("開発用の不変量ファイルを公開物に混ぜていない", () =>
 // --- 材料ごとUIの文言が、実際に配信物へ届いていること ----------------------
 // itemized の既定は false なので、この分岐は out/index.html に現れない。
 // つまり上の「可視テキスト」系の検査はここに永久に届かず、
-// 文言モジュールを作っただけでは「中身は検査したが、画面から使われているかは
+// 文言モジュールを作っただけでは「中身は検査したが、配信物に載っているかは
 // 誰も見ていない」状態になる（定数を残したまま JSX を消しても緑のままだった）。
-// 書き出したクライアントチャンクに文字列が実在するかで、経路に依存せず判定する。
+//
+// **粒度の正直な説明**: これが見ているのは「文字列がクライアントチャンクに実在するか」
+// であって「その文字列が画面に描かれるか」ではない。page.tsx は名前付きオブジェクトを
+// import するので、オブジェクトが1つでも使われていればフィールド単位の未使用は
+// tree-shake されず素通りする。また同じ値を持つ2つの定数
+// （ROW.unitPlaceholder と UNIT_PICKER.label はどちらも "単位"）は互いを隠す。
+// 捕まえられるのは「定数の集まりごと画面から消えた」規模の失敗まで。
 test("材料ごとUIの文言が配信されるクライアントチャンクに含まれる", () => {
   requireBuild();
   const scripts = outFiles(/\.js$/, join(OUT, "_next"));
   assert.ok(scripts.length > 0, "out/_next にクライアントスクリプトがありません");
-  // minifier は非 ASCII を \xNN / \uNNNN のエスケープで書き出すことがある
-  // （実際 ¥ は \xa5 になる）。素の文字列と突き合わせるため先に戻す。
-  const unescapeJs = (src) =>
-    src
-      .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-      .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-      .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-  const bundle = scripts
-    .map((f) => unescapeJs(readFileSync(f, "utf8")))
-    .join("\n");
+  const bundle = clientBundleText();
   const missing = collectStrings(COPY_OBJECTS).filter(
     (s) => !bundle.includes(s),
   );
@@ -177,36 +190,167 @@ test("材料ごとUIの文言が配信されるクライアントチャンクに
   );
 });
 
+// --- 配信物そのものに禁止表現が載っていないこと（逆方向・経路非依存） -------
+// ここまでの禁止語検査はどれも「決められた入れ物の中身」を見る片方向の検査で、
+// 入れ物の外（COPY_OBJECTS 未登録の export・JSX への直書き）を通れば素通りする。
+// 実測で、禁止語を含む文字列を画面に出したまま 75/75 緑・typecheck 緑・lint 緑に
+// できることが確認された。配信されるチャンクを直接見れば、どの経路で入っても止まる。
+test("配信されるクライアントチャンクに禁止表現が載っていない", () => {
+  requireBuild();
+  const bundle = clientBundleText();
+  // 「保証するものではありません」のような免責は書いてよいので先に取り除く。
+  const cleaned = bundle.replace(DISCLAIMER, "");
+  const hits = FORBIDDEN.filter((w) => cleaned.includes(w));
+  assert.deepEqual(
+    hits,
+    [],
+    "配信されるスクリプトに断定的・助言的な表現が含まれています（どの経路で入ったかに関わらず公開してはいけません）",
+  );
+});
+
 // --- 44px タッチ目標の宣言が守られていること -------------------------------
 // このスタイルシートは冒頭（:7）と .seg（:1011 付近）で 44px を明文の土台として
 // 宣言している。守られているかは目視でしか確かめられておらず、実際に一度割った
 // （.matunit-chip の 32px）。宣言を機械が見張る形にする。
-// 見た目を小さくしたい部品は ::before で当たりだけ広げる作法（.matdel / .matunit-chip）。
+//
+// 見るのは2方向:
+//   (a) min-height を宣言している操作部品が 44px を割っていないか
+//   (b) 操作部品として列挙したセレクタが、44px を得る手段を実際に持っているか
+// (b) が要るのは、宣言ごと消える回帰を (a) が見られないため
+// （実際に .matadd { min-height: 44px } が消えても (a) だけでは緑のままだった）。
+// 44px の得かたは2通り: 自分で min-height を宣言する / ::before で当たりを広げる /
+// 44px を宣言している他のクラスと併用する（例 .matadd は .btn と併用）。
+// 自分では 44px を宣言せず、44px を持つ共有クラスと併用して満たす部品。
+// 併用先が壊れたら (b) が落ちるので、ここに入れても検査から外れるわけではない。
+const COMBINED_TOUCH = new Set([".matadd"]);
+
+const TOUCH_TARGETS = [
+  { sel: ".matdel", via: "self" },
+  { sel: ".matunit", via: "self" },
+  { sel: ".seg-btn", via: "self" },
+  { sel: ".matunit-chip", via: "before" },
+  { sel: ".matadd", via: "btn" },
+];
+
 test("操作部品の min-height が 44px の宣言を割っていない", () => {
   const css = read("app/globals.css");
-  // 当たり判定を別に確保している部品は、その旨をセレクタで示している。
-  const hitAreaSelectors = /\.(matdel|matunit-chip)::before/;
-  assert.ok(hitAreaSelectors.test(css), "当たり判定の拡張が見当たりません");
+  // セレクタの捕捉は直前の } 以降すべてを含むので、コメントが混ざると
+  // セレクタ名の一致比較が成立しない（実際 .matunit / .btn を取り逃した）。
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const blocks = [...bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
 
-  const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
-  const offenders = [];
+  /** そのセレクタ自身が宣言している min-height（px）。無ければ null。 */
+  const declaredMinHeight = (selector) => {
+    for (const [, sel, body] of blocks) {
+      const name = sel.trim().split("\n").pop().trim();
+      if (name !== selector) continue;
+      const m = body.match(/min-height:\s*(\d+(?:\.\d+)?)px/);
+      if (m) return parseFloat(m[1]);
+    }
+    return null;
+  };
+
+  // (a) 44px 未満を宣言している操作部品が無いこと。
+  //     ::before で当たりを別に確保している部品は、見た目が小さくてよい。
+  const tooSmall = [];
   for (const [, selector, body] of blocks) {
     const m = body.match(/min-height:\s*(\d+(?:\.\d+)?)px/);
     if (!m) continue;
     const px = parseFloat(m[1]);
     if (px >= 44) continue;
     const sel = selector.trim();
-    // 当たり判定を ::before で 44px 確保している部品は、見た目が小さくてよい。
     const base = sel.replace(/:.*$/, "").trim();
     const hasHitArea = new RegExp(
       `${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}::before\\s*\\{[^}]*height:\\s*44px`,
       "s",
     ).test(css);
-    if (!hasHitArea) offenders.push(`${sel} → ${px}px`);
+    if (!hasHitArea) tooSmall.push(`${sel} → ${px}px`);
   }
   assert.deepEqual(
-    offenders,
+    tooSmall,
     [],
     "44px 未満の操作部品があります（見た目を小さくしたいなら ::before で当たりを 44px 確保してください）",
+  );
+
+  // (a2) 高さについて何も言っていない操作部品。(a) は min-height を宣言している
+  //      ブロックしか見ないので、新規の押せる部品に高さを書き忘れる失敗
+  //      （既定の高さは行送り相当で 44px に満たない）を素通りさせていた。
+  //      押せることを cursor: pointer で名乗るブロックは、44px を得る手段を
+  //      自分の中で示していること。手段は3通りある:
+  //        - min-height / height に 44px
+  //        - padding で確保（details summary は padding-block: calc((44px - …)/2)）
+  //        - ::before で当たりだけ広げる（.matunit-chip）
+  //      いずれも本文中に 44px という数字が現れるので、それを手掛かりにする。
+  //      **この検査は結果の高さを計算していない**。「44px に言及しているか」しか
+  //      見ないので、44px を書いたうえで別の指定で潰す書き方は捕まえられない。
+  const noHeight = [];
+  for (const [, selector, body] of blocks) {
+    if (!/cursor:\s*pointer/.test(body)) continue;
+    const sel = selector.trim().split("\n").pop().trim();
+    if (/::|:hover|:focus|:active|:disabled/.test(sel)) continue;
+    if (/44px/.test(body)) continue;
+    const base = sel.replace(/:.*$/, "").trim();
+    const esc = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // ::before で当たりを広げている、または他所で 44px を宣言している。
+    if (new RegExp(`${esc}(::before)?\\s*\\{[^}]*44px`, "s").test(bare)) continue;
+    // 44px を宣言しているクラスと併用する部品（例 .matadd は .btn と併用）。
+    if (COMBINED_TOUCH.has(base)) continue;
+    noHeight.push(sel);
+  }
+  assert.deepEqual(
+    noHeight,
+    [],
+    "押せる部品が 44px のタッチ目標に言及していません（min-height / padding / ::before のどれかで確保してください）",
+  );
+
+  // (b) 列挙した操作部品が 44px を得る手段を実際に持っていること。
+  //     宣言ごと消える回帰は (a) では見えない。
+  const lost = [];
+  for (const { sel, via } of TOUCH_TARGETS) {
+    if (via === "self") {
+      if (declaredMinHeight(sel) !== 44) lost.push(`${sel}（自身の min-height:44px が無い）`);
+    } else if (via === "before") {
+      const ok = new RegExp(
+        `${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}::before\\s*\\{[^}]*height:\\s*44px`,
+        "s",
+      ).test(css);
+      if (!ok) lost.push(`${sel}（::before の当たり 44px が無い）`);
+    } else if (via === "btn") {
+      // .btn と併用して 44px を得る部品。.btn 側が生きていることを見る。
+      if (declaredMinHeight(".btn") !== 44) lost.push(`${sel}（併用する .btn の 44px が無い）`);
+    }
+  }
+  assert.deepEqual(lost, [], "44px を得る手段を失った操作部品があります");
+});
+
+// --- markup が使う class が CSS に定義されていること ------------------------
+// app/globals.css の一部を編集したとき、隣接するブロックを巻き込んで消しても
+// 型でも lint でも build でも落ちず、テストも緑のまま通る。実際に一度、
+// .matcost / .matfoot / .mattotal / .matadd / .matlead .matnote を丸ごと失った
+// ビルドが「実ブラウザで全項目 ok」と判定された（見ていたのは新設要素だけだった）。
+// className と CSS の対応を見れば、この種の事故は機械的に落ちる。
+test("画面が使っている class がスタイルシートに定義されている", () => {
+  const css = read("app/globals.css");
+  const sources = ["app/page.tsx", "app/not-found.tsx", "app/layout.tsx"]
+    .filter((f) => existsSync(join(ROOT, f)))
+    .map((f) => read(f))
+    .join("\n");
+
+  const used = new Set();
+  for (const m of sources.matchAll(/className="([^"{}]+)"/g)) {
+    for (const c of m[1].split(/\s+/)) if (c) used.add(c);
+  }
+  assert.ok(used.size > 10, `class を拾えていません（${used.size} 件）`);
+
+  // 複合セレクタ（.matlead .matnote）でも定義とみなすので、
+  // クラス名がセレクタとして現れるかだけを見る。
+  const undefinedClasses = [...used].filter(
+    (c) =>
+      !new RegExp(`\\.${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(css),
+  );
+  assert.deepEqual(
+    undefinedClasses.sort(),
+    [],
+    "markup が使っているのに CSS に定義が無い class があります",
   );
 });
