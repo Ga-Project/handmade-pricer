@@ -15,7 +15,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { FAQ } from "../lib/faq.mjs";
-import { FORBIDDEN, DISCLAIMER } from "./faq.test.mjs";
+import { FORBIDDEN, DISCLAIMER, collectStrings } from "../lib/copy-rules.mjs";
+import { COPY_OBJECTS } from "../lib/itemized-copy.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "out");
@@ -144,4 +145,68 @@ test("開発用の不変量ファイルを公開物に混ぜていない", () =>
   // 名前を決め打ちすると別名で置かれたときに素通りするので、拡張子で広く見る。
   const hashes = outFiles(/\.sha256$/).map((f) => f.slice(OUT.length + 1));
   assert.deepEqual(hashes, [], "ハッシュファイルは scripts/ に置く（public/ に置くと配信される）");
+});
+
+// --- 材料ごとUIの文言が、実際に配信物へ届いていること ----------------------
+// itemized の既定は false なので、この分岐は out/index.html に現れない。
+// つまり上の「可視テキスト」系の検査はここに永久に届かず、
+// 文言モジュールを作っただけでは「中身は検査したが、画面から使われているかは
+// 誰も見ていない」状態になる（定数を残したまま JSX を消しても緑のままだった）。
+// 書き出したクライアントチャンクに文字列が実在するかで、経路に依存せず判定する。
+test("材料ごとUIの文言が配信されるクライアントチャンクに含まれる", () => {
+  requireBuild();
+  const scripts = outFiles(/\.js$/, join(OUT, "_next"));
+  assert.ok(scripts.length > 0, "out/_next にクライアントスクリプトがありません");
+  // minifier は非 ASCII を \xNN / \uNNNN のエスケープで書き出すことがある
+  // （実際 ¥ は \xa5 になる）。素の文字列と突き合わせるため先に戻す。
+  const unescapeJs = (src) =>
+    src
+      .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  const bundle = scripts
+    .map((f) => unescapeJs(readFileSync(f, "utf8")))
+    .join("\n");
+  const missing = collectStrings(COPY_OBJECTS).filter(
+    (s) => !bundle.includes(s),
+  );
+  assert.deepEqual(
+    missing,
+    [],
+    "文言モジュールにあるが画面から使われていない（配信物に無い）文字列があります",
+  );
+});
+
+// --- 44px タッチ目標の宣言が守られていること -------------------------------
+// このスタイルシートは冒頭（:7）と .seg（:1011 付近）で 44px を明文の土台として
+// 宣言している。守られているかは目視でしか確かめられておらず、実際に一度割った
+// （.matunit-chip の 32px）。宣言を機械が見張る形にする。
+// 見た目を小さくしたい部品は ::before で当たりだけ広げる作法（.matdel / .matunit-chip）。
+test("操作部品の min-height が 44px の宣言を割っていない", () => {
+  const css = read("app/globals.css");
+  // 当たり判定を別に確保している部品は、その旨をセレクタで示している。
+  const hitAreaSelectors = /\.(matdel|matunit-chip)::before/;
+  assert.ok(hitAreaSelectors.test(css), "当たり判定の拡張が見当たりません");
+
+  const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const offenders = [];
+  for (const [, selector, body] of blocks) {
+    const m = body.match(/min-height:\s*(\d+(?:\.\d+)?)px/);
+    if (!m) continue;
+    const px = parseFloat(m[1]);
+    if (px >= 44) continue;
+    const sel = selector.trim();
+    // 当たり判定を ::before で 44px 確保している部品は、見た目が小さくてよい。
+    const base = sel.replace(/:.*$/, "").trim();
+    const hasHitArea = new RegExp(
+      `${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}::before\\s*\\{[^}]*height:\\s*44px`,
+      "s",
+    ).test(css);
+    if (!hasHitArea) offenders.push(`${sel} → ${px}px`);
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    "44px 未満の操作部品があります（見た目を小さくしたいなら ::before で当たりを 44px 確保してください）",
+  );
 });

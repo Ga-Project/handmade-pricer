@@ -22,7 +22,15 @@ import {
   encodeMaterials,
   restoreMaterials,
 } from "../lib/materials.mjs";
-import { LEAD, EMPTY_NOTICE, UNIT_PICKER } from "../lib/itemized-copy.mjs";
+import {
+  LEAD,
+  EMPTY_NOTICE,
+  ROW,
+  ROW_LABELS,
+  UNDO,
+  FOOT,
+  UNIT_PICKER,
+} from "../lib/itemized-copy.mjs";
 import { FAQ, FAQ_GROUPS } from "../lib/faq.mjs";
 import { toJsonLd } from "../lib/json-ld.mjs";
 
@@ -398,20 +406,6 @@ export default function Home() {
                       </small>
                     </p>
 
-                    {/*
-                      「まとめて」から切り替えた直後は行が空なので材料費が ¥0 になり、
-                      右の売値と手取りが黙って下がる。行ごとのヒントは行の中にしか出ないので、
-                      「なぜ下がったか」と「戻せること」はここ（欄の頭）で伝える。
-                    */}
-                    {materialsTotal === 0 && (
-                      <p className="matempty" role="status">
-                        <b>{EMPTY_NOTICE.title}</b>
-                        <span>{EMPTY_NOTICE.body}</span>
-                        <span className="matempty-back">
-                          {EMPTY_NOTICE.back}
-                        </span>
-                      </p>
-                    )}
 
                     <datalist id="unit-presets">
                       {UNIT_PRESETS.map((u: string) => (
@@ -442,8 +436,8 @@ export default function Home() {
                               className="matname"
                               type="text"
                               value={line.name}
-                              placeholder={`材料 ${i + 1}`}
-                              aria-label={`材料 ${i + 1} の名前`}
+                              placeholder={ROW_LABELS.namePlaceholder(i + 1)}
+                              aria-label={ROW_LABELS.name(i + 1)}
                               onChange={(e) =>
                                 updateLine(line.id, { name: e.target.value })
                               }
@@ -453,8 +447,8 @@ export default function Home() {
                               type="text"
                               list="unit-presets"
                               value={line.unit}
-                              placeholder="単位"
-                              aria-label={`材料 ${i + 1} の単位（数量に共通）`}
+                              placeholder={ROW.unitPlaceholder}
+                              aria-label={ROW_LABELS.unit(i + 1)}
                               onChange={(e) =>
                                 updateLine(line.id, { unit: e.target.value })
                               }
@@ -463,11 +457,9 @@ export default function Home() {
                               type="button"
                               className="matdel"
                               onClick={() => removeLine(line.id)}
-                              aria-label={`材料 ${i + 1}${
-                                line.name ? `（${line.name}）` : ""
-                              }を消す`}
+                              aria-label={ROW_LABELS.del(i + 1, line.name)}
                             >
-                              消す
+                              {ROW.del}
                             </button>
                           </div>
 
@@ -482,6 +474,9 @@ export default function Home() {
                             role="group"
                             aria-label={UNIT_PICKER.groupLabel(i + 1)}
                           >
+                            <span className="matunits-lab" aria-hidden="true">
+                              {UNIT_PICKER.label}
+                            </span>
                             {UNIT_PRESETS.map((u: string) => (
                               <button
                                 key={u}
@@ -496,11 +491,14 @@ export default function Home() {
                                 {u}
                               </button>
                             ))}
+                            <span className="matunits-hint" aria-hidden="true">
+                              {UNIT_PICKER.hint}
+                            </span>
                           </div>
 
                           <div className="matgrid">
                             <label className="matcell">
-                              <span className="matlab">買った値段</span>
+                              <span className="matlab">{ROW.boughtPrice}</span>
                               <span className="input-affix">
                                 <span className="pre" aria-hidden="true">
                                   ¥
@@ -510,7 +508,7 @@ export default function Home() {
                                   inputMode="decimal"
                                   min="0"
                                   value={line.price}
-                                  aria-label={`材料 ${i + 1} の買った値段（円）`}
+                                  aria-label={ROW_LABELS.boughtPrice(i + 1)}
                                   onChange={(e) =>
                                     updateLine(line.id, {
                                       price: e.target.value,
@@ -521,7 +519,8 @@ export default function Home() {
                             </label>
                             <label className="matcell">
                               <span className="matlab">
-                                買った量{unit ? `（${unit}）` : ""}
+                                {ROW.boughtAmount}
+                                {unit ? `（${unit}）` : ""}
                               </span>
                               <span className="input-affix">
                                 <input
@@ -529,7 +528,7 @@ export default function Home() {
                                   inputMode="decimal"
                                   min="0"
                                   value={line.bought}
-                                  aria-label={`材料 ${i + 1} の買った量`}
+                                  aria-label={ROW_LABELS.boughtAmount(i + 1)}
                                   onChange={(e) =>
                                     updateLine(line.id, {
                                       bought: e.target.value,
@@ -540,7 +539,8 @@ export default function Home() {
                             </label>
                             <label className="matcell">
                               <span className="matlab">
-                                使う量{unit ? `（${unit}）` : ""}
+                                {ROW.usedAmount}
+                                {unit ? `（${unit}）` : ""}
                               </span>
                               <span className="input-affix">
                                 <input
@@ -548,7 +548,7 @@ export default function Home() {
                                   inputMode="decimal"
                                   min="0"
                                   value={line.used}
-                                  aria-label={`材料 ${i + 1} の使う量`}
+                                  aria-label={ROW_LABELS.usedAmount(i + 1)}
                                   onChange={(e) =>
                                     updateLine(line.id, { used: e.target.value })
                                   }
@@ -558,15 +558,15 @@ export default function Home() {
                           </div>
 
                           <p className="matcost">
-                            この作品ぶん <b>{costLabel}</b>
+                            {ROW.costPrefix} <b>{costLabel}</b>
                             {cost === 0 && (
                               <span className="matcost-hint">
-                                値段・買った量・使う量を入れると出ます
+                                {ROW.costHint}
                               </span>
                             )}
                             {overUse && (
                               <span className="matcost-warn">
-                                使う量が買った量より多くなっています。単位はそろっていますか
+                                {ROW.overUseWarn}
                               </span>
                             )}
                           </p>
@@ -577,17 +577,37 @@ export default function Home() {
                     {undoable && (
                       <p className="matundo">
                         <span>
-                          「{undoable.line.name || "名前のない材料"}」を消しました
+                          「{undoable.line.name || UNDO.unnamed}」
+                          {UNDO.suffix}
                         </span>
                         <button
                           type="button"
                           className="matundo-btn"
                           onClick={undoRemove}
                         >
-                          元に戻す
+                          {UNDO.action}
                         </button>
                       </p>
                     )}
+
+                    {/*
+                      ライブ領域は「先に DOM に在り、あとから中身が変わる」形でないと
+                      読み上げが発火しない（app/page.tsx の .share-status と同じ作法）。
+                      条件マウントにすると、①告知が読まれない ②入力し終えた瞬間に
+                      案内ぶんの高さが消えて入力欄が跳ねる（実測 137.7px）の2つが起きる。
+                      説明対象の数字（材料費の合計）の直前に置き、入力欄より下にする。
+                    */}
+                    <p className="matempty" role="status" aria-live="polite">
+                      {materialsTotal === 0 && (
+                        <>
+                          <b>{EMPTY_NOTICE.title}</b>
+                          <span>{EMPTY_NOTICE.body}</span>
+                          <span className="matempty-back">
+                            {EMPTY_NOTICE.back}
+                          </span>
+                        </>
+                      )}
+                    </p>
 
                     <div className="matfoot">
                       <button
@@ -595,10 +615,10 @@ export default function Home() {
                         className="btn btn-ghost matadd"
                         onClick={addLine}
                       >
-                        ＋ 材料をふやす
+                        {FOOT.add}
                       </button>
                       <p className="mattotal">
-                        材料費の合計
+                        {FOOT.total}
                         <b>{formatYen(materialsTotal)}</b>
                       </p>
                     </div>

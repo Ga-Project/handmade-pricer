@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { FAQ } from "../lib/faq.mjs";
+import { FORBIDDEN, DISCLAIMER, findForbidden } from "../lib/copy-rules.mjs";
 
 test("FAQ は十分な数の項目を持つ", () => {
   assert.ok(FAQ.length >= 6, `FAQ が ${FAQ.length} 件しかない`);
@@ -23,29 +24,10 @@ test("FAQ の各回答は中身のある長さを持つ", () => {
   }
 });
 
-// 断定・保証・税務助言に読める代表的な言い回しを落とすトリップワイヤ。
-// 言い換えは無数にあるので、これは「よくある踏み外しを止める」ものであって、
-// 表現の制約が機械で完全に担保されているという意味ではない（執筆時にも守ること）。
-export const FORBIDDEN = [
-  "節税",
-  "保証",
-  "必ず儲かり",
-  "赤字になりません",
-  "申告が正しくできます",
-  "税務相談",
-  "損しません",
-];
-
-// 「保証するものではありません」のような免責は書いてよい（むしろ書くべき）。
-// 落としたいのは保証を"する"側の表現なので、否定形を先に取り除いてから見る。
-export const DISCLAIMER = /保証(?:するものでは|しま?せん|いたしません|できません|は(?:し|いたし)ません)[^。]*/g;
-
 test("FAQ に断定的・助言的な禁止表現が含まれない", () => {
   for (const f of FAQ) {
-    const text = `${f.q}${f.a}`.replace(DISCLAIMER, "");
-    for (const word of FORBIDDEN) {
-      assert.ok(!text.includes(word), `禁止表現「${word}」が含まれる: ${f.q}`);
-    }
+    const hits = findForbidden(`${f.q}${f.a}`);
+    assert.deepEqual(hits, [], `禁止表現 ${hits.join("・")} が含まれる: ${f.q}`);
   }
 });
 

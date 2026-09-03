@@ -3,6 +3,10 @@
 // この UI は itemized の既定が false なので書き出した out/index.html に現れず、
 // guards.test.mjs の可視テキスト検査は届かない。文言をモジュールに出したことで、
 // レンダリングされるかどうかと関係なく中身を直接検査できる。
+//
+// 一覧は構造から導出する（手書きの一覧を持たない）。以前は「手書きの一覧を
+// もう一方の手書きの一覧と突き合わせる」形だったため、守れるのは文言を"外す"方向だけで、
+// 実務で起きる"足す"方向は素通りしていた（禁止語を含む文言を新設しても全件緑だった）。
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,53 +14,86 @@ import assert from "node:assert/strict";
 import {
   LEAD,
   EMPTY_NOTICE,
+  ROW,
+  UNDO,
+  FOOT,
   UNIT_PICKER,
-  ITEMIZED_COPY_STRINGS,
+  ROW_LABELS,
+  COPY_OBJECTS,
+  COPY_TEMPLATES,
+  ROW_LABEL_TEMPLATES,
 } from "../lib/itemized-copy.mjs";
 import { UNIT_PRESETS } from "../lib/materials.mjs";
-import { FORBIDDEN, DISCLAIMER } from "./faq.test.mjs";
+import {
+  collectStrings,
+  collectFunctions,
+  findForbidden,
+} from "../lib/copy-rules.mjs";
+
+/** 画面に出る静的な文言（構造から導出）。 */
+const STATIC_STRINGS = collectStrings(COPY_OBJECTS);
+
+/** 関数で組み立てる文言を、登録された呼び出し例で実体化したもの。 */
+const TEMPLATED_STRINGS = [
+  ...collectFunctions(COPY_OBJECTS).flatMap(({ path, fn }) =>
+    (COPY_TEMPLATES[path] ?? []).map((args) => fn(...args)),
+  ),
+  ...Object.entries(ROW_LABELS).flatMap(([key, fn]) =>
+    (ROW_LABEL_TEMPLATES[key] ?? []).map((args) => fn(...args)),
+  ),
+];
 
 test("材料ごと入力の文言に断定的・助言的な禁止表現が含まれない", () => {
-  for (const s of ITEMIZED_COPY_STRINGS) {
-    const text = String(s).replace(DISCLAIMER, "");
-    for (const word of FORBIDDEN) {
-      assert.ok(!text.includes(word), `禁止表現「${word}」が含まれる: ${s}`);
-    }
-  }
-});
-
-test("検査対象の一覧が実際の文言をすべて拾っている", () => {
-  // 文言を足したのに ITEMIZED_COPY_STRINGS へ入れ忘れると、
-  // 「検査があるのに何も見ていない」状態に戻る。定数側から数えて突き合わせる。
-  const fromConstants = [
-    LEAD.head,
-    LEAD.emphasis,
-    LEAD.tail,
-    LEAD.example,
-    LEAD.unitNote.head,
-    LEAD.unitNote.emphasis,
-    LEAD.unitNote.tail,
-    EMPTY_NOTICE.title,
-    EMPTY_NOTICE.body,
-    EMPTY_NOTICE.back,
-  ];
-  for (const s of fromConstants) {
-    assert.ok(
-      ITEMIZED_COPY_STRINGS.includes(s),
-      `ITEMIZED_COPY_STRINGS に入っていない文言がある: ${s}`,
-    );
+  for (const s of [...STATIC_STRINGS, ...TEMPLATED_STRINGS]) {
+    const hits = findForbidden(s);
+    assert.deepEqual(hits, [], `禁止表現 ${hits.join("・")} が含まれる: ${s}`);
   }
 });
 
 test("文言はどれも空でない", () => {
-  for (const s of ITEMIZED_COPY_STRINGS) {
+  for (const s of [...STATIC_STRINGS, ...TEMPLATED_STRINGS]) {
     assert.ok(String(s).trim().length > 0, "空の文言がある");
   }
 });
 
+// --- 一覧の導出が本当に構造から来ていること -------------------------------
+// 「検査があるのに何も見ていない」状態へ戻らないための番人。
+
+test("文字列は定数から構造的に集めている（手書き一覧に依存しない）", () => {
+  // 代表を数点、明示的に含まれることで導出経路が生きていることを確認する。
+  for (const s of [
+    LEAD.example,
+    EMPTY_NOTICE.title,
+    EMPTY_NOTICE.back,
+    ROW.overUseWarn,
+    UNDO.action,
+    FOOT.total,
+    UNIT_PICKER.label,
+  ]) {
+    assert.ok(STATIC_STRINGS.includes(s), `導出から漏れている: ${s}`);
+  }
+  // 入れ子（LEAD.unitNote）まで潜っていること。
+  assert.ok(STATIC_STRINGS.includes(LEAD.unitNote.tail));
+});
+
+test("関数で作る文言はすべて呼び出し例を持つ（足して忘れたら落ちる）", () => {
+  for (const { path } of collectFunctions(COPY_OBJECTS)) {
+    const samples = COPY_TEMPLATES[path];
+    assert.ok(
+      Array.isArray(samples) && samples.length > 0,
+      `COPY_TEMPLATES に呼び出し例が無い: ${path}`,
+    );
+  }
+  for (const key of Object.keys(ROW_LABELS)) {
+    const samples = ROW_LABEL_TEMPLATES[key];
+    assert.ok(
+      Array.isArray(samples) && samples.length > 0,
+      `ROW_LABEL_TEMPLATES に呼び出し例が無い: ${key}`,
+    );
+  }
+});
+
 // --- 単位チップ ------------------------------------------------------------
-// チップは「候補があることに気づけない」を直すためのものなので、
-// 候補の一覧（materials.mjs の UNIT_PRESETS）と読み上げ名が食い違わないことを見る。
 
 test("単位チップの読み上げ名に単位そのものが入る", () => {
   for (const u of UNIT_PRESETS) {
@@ -73,9 +110,26 @@ test("単位チップの群名は材料ごとに区別できる", () => {
 // --- 空状態の案内 ----------------------------------------------------------
 
 test("材料費 ¥0 の案内は、下がった理由と戻し方の両方を含む", () => {
-  // 「なぜ売値が下がったか」だけ書いて「戻せる」を書かないと、
-  // 切り替えたことを後悔した人が元の金額を取り戻す道を見失う。
   assert.match(EMPTY_NOTICE.title, /材料費/);
-  assert.match(EMPTY_NOTICE.body, /買った値段|買った量|使う量/);
+  assert.match(EMPTY_NOTICE.body, /行/);
   assert.match(EMPTY_NOTICE.back, /まとめて/);
+});
+
+test("案内は利用者の入力履歴を主張しない", () => {
+  // 初回利用者は「まとめて」に一度も入力していない（初期値が入っているだけ）し、
+  // 共有URLの受け手は明細だけを受け取っていることがある。
+  // 「さきほど入れた合計に戻る」はその2者にとって嘘になる。
+  const text = Object.values(EMPTY_NOTICE).join("");
+  for (const w of ["さきほど", "先ほど", "入れていた合計", "元の合計"]) {
+    assert.ok(!text.includes(w), `履歴を主張する表現「${w}」が含まれる`);
+  }
+});
+
+test("案内は行の存在を前提にしない", () => {
+  // 行はすべて消せる（removeLine に下限が無い）ので、
+  // 「下の行に」と書くと行が1つも無い画面と矛盾する。
+  const text = Object.values(EMPTY_NOTICE).join("");
+  for (const w of ["下の行", "上の行"]) {
+    assert.ok(!text.includes(w), `行の存在を前提にする表現「${w}」が含まれる`);
+  }
 });
