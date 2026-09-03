@@ -269,7 +269,7 @@ test("操作部品の min-height が 44px の宣言を割っていない", () =>
     const hasHitArea = new RegExp(
       `${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}::before\\s*\\{[^}]*height:\\s*44px`,
       "s",
-    ).test(css);
+    ).test(bare);
     if (!hasHitArea) tooSmall.push(`${sel} → ${px}px`);
   }
   assert.deepEqual(
@@ -319,7 +319,7 @@ test("操作部品の min-height が 44px の宣言を割っていない", () =>
       const ok = new RegExp(
         `${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}::before\\s*\\{[^}]*height:\\s*44px`,
         "s",
-      ).test(css);
+      ).test(bare);
       if (!ok) lost.push(`${sel}（::before の当たり 44px が無い）`);
     } else if (via === "btn") {
       // .btn と併用して 44px を得る部品。.btn 側が生きていることを見る。
@@ -336,15 +336,32 @@ test("操作部品の min-height が 44px の宣言を割っていない", () =>
 // ビルドが「実ブラウザで全項目 ok」と判定された（見ていたのは新設要素だけだった）。
 // className と CSS の対応を見れば、この種の事故は機械的に落ちる。
 test("画面が使っている class がスタイルシートに定義されている", () => {
-  const css = read("app/globals.css");
+  // コメントを剥がしてから照合する。生の CSS を見ると、規則を消しても
+  // その class に言及するコメントが残っていれば緑になる（実測: markup が使う
+  // 90 class のうち 16 class がコメント内で名指しされており、
+  // .matrow / .matdel / .matunit / .matlead など事故が起きた領域を含む）。
+  const css = read("app/globals.css").replace(/\/\*[\s\S]*?\*\//g, "");
   const sources = ["app/page.tsx", "app/not-found.tsx", "app/layout.tsx"]
     .filter((f) => existsSync(join(ROOT, f)))
     .map((f) => read(f))
     .join("\n");
 
   const used = new Set();
+  // 直値の className="a b"
   for (const m of sources.matchAll(/className="([^"{}]+)"/g)) {
     for (const c of m[1].split(/\s+/)) if (c) used.add(c);
+  }
+  // className={…} の中に直接書かれた文字列リテラル。
+  // 実測で className={cond ? "matcost" : "matnope"} が素通りしていた。
+  //
+  // **射程**: バッククォートを含まない式だけを見る。テンプレートリテラル
+  // （`hangtag${…}` のような組み立て）は、クラス名が補間をまたいで作られるので
+  // 静的には確定できず、断片を拾うと逆に誤検出になる（実際 `?  "" : " empty"` から
+  // ":" を拾って誤爆した）。この形の class は本検査の対象外。
+  for (const m of sources.matchAll(/className=\{([^`}]*?)\}/g)) {
+    for (const lit of m[1].matchAll(/"([^"]+)"|'([^']+)'/g)) {
+      for (const c of (lit[1] ?? lit[2]).split(/\s+/)) if (c) used.add(c);
+    }
   }
   assert.ok(used.size > 10, `class を拾えていません（${used.size} 件）`);
 
