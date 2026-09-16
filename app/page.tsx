@@ -31,6 +31,7 @@ import {
   FOOT,
   UNIT_PICKER,
 } from "../lib/itemized-copy.mjs";
+import { nextIndex, rovingTabIndex } from "../lib/radiogroup.mjs";
 import { FAQ, FAQ_GROUPS } from "../lib/faq.mjs";
 import { toJsonLd } from "../lib/json-ld.mjs";
 
@@ -54,6 +55,17 @@ const FAQ_LD = {
     acceptedAnswer: { "@type": "Answer", text: f.a },
   })),
 };
+
+/**
+ * 材料費の入れ方（排他選択）。単位チップと同じ radiogroup として扱うため、
+ * 選択肢を配列にして roving tabindex の計算に渡せる形にしておく。
+ */
+const SEG_MODES = [
+  { label: "まとめて", itemized: false },
+  { label: "材料ごと", itemized: true },
+] as const;
+/** rovingTabIndex は文字列の配列で「いまどれか」を引くので、真偽値を文字列にした鍵。 */
+const SEG_VALUES = SEG_MODES.map((m) => String(m.itemized));
 
 type MaterialLine = {
   id: string;
@@ -358,23 +370,57 @@ export default function Home() {
                   <span className="label">
                     材料費 <span className="hint">生地・パーツ・箱など</span>
                   </span>
-                  <div className="seg" role="group" aria-label="材料費の入れ方">
-                    <button
-                      type="button"
-                      className="seg-btn"
-                      aria-pressed={!itemized}
-                      onClick={() => setItemized(false)}
-                    >
-                      まとめて
-                    </button>
-                    <button
-                      type="button"
-                      className="seg-btn"
-                      aria-pressed={itemized}
-                      onClick={enableItemized}
-                    >
-                      材料ごと
-                    </button>
+                  {/* 単位チップと同じ「排他選択」なので、同じ役・同じキー操作に
+                      揃える。見た目まで同一（ピル・--control-line の輪郭・
+                      --accent の塗り）なのに、片方だけ aria-pressed のトグルで
+                      矢印も効かない、という二重の作法を1画面に置かない。
+                      矢印は focus だけ動かし、確定は Space / Enter。
+                      切り替えは材料費の入り方が変わる＝副作用があるので、
+                      通り過ぎるだけで確定してはいけない。 */}
+                  <div
+                    className="seg"
+                    role="radiogroup"
+                    aria-label="材料費の入れ方"
+                  >
+                    {SEG_MODES.map((mode, si) => {
+                      const checked = mode.itemized === itemized;
+                      return (
+                        <button
+                          key={mode.label}
+                          type="button"
+                          role="radio"
+                          className="seg-btn"
+                          aria-checked={checked}
+                          tabIndex={rovingTabIndex(
+                            SEG_VALUES,
+                            String(itemized),
+                            si
+                          )}
+                          onKeyDown={(e) => {
+                            const to = nextIndex(e.key, si, SEG_MODES.length, {
+                              alt: e.altKey,
+                              ctrl: e.ctrlKey,
+                              meta: e.metaKey,
+                              shift: e.shiftKey,
+                            });
+                            if (to === null) return;
+                            e.preventDefault();
+                            const group = e.currentTarget.closest(
+                              '[role="radiogroup"]'
+                            );
+                            const radios = group?.querySelectorAll<HTMLElement>(
+                              '[role="radio"]'
+                            );
+                            radios?.[to]?.focus();
+                          }}
+                          onClick={() =>
+                            mode.itemized ? enableItemized() : setItemized(false)
+                          }
+                        >
+                          {mode.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -471,19 +517,57 @@ export default function Home() {
                           */}
                           <div
                             className="matunits"
-                            role="group"
+                            role="radiogroup"
                             aria-label={UNIT_PICKER.groupLabel(i + 1)}
+                            aria-describedby={`unit-hint-${line.id}`}
                           >
                             <span className="matunits-lab" aria-hidden="true">
                               {UNIT_PICKER.label}
                             </span>
-                            {UNIT_PRESETS.map((u: string) => (
+                            {UNIT_PRESETS.map((u: string, ui: number) => (
                               <button
                                 key={u}
                                 type="button"
+                                role="radio"
                                 className="matunit-chip"
-                                aria-pressed={line.unit === u}
-                                aria-label={UNIT_PICKER.optionLabel(i + 1, u)}
+                                aria-checked={line.unit === u}
+                                // 読み上げ名は可視の文字（cm・m・…）そのもの。
+                                // radio は選択肢なので名前は名詞でよく、
+                                // 「材料 1 の単位を cm にする」だと群の名前と
+                                // 通し番号が二重に読まれ、選択肢が命令になる。
+                                // 群ぜんぶで Tab 位置は1つ。材料が増えても
+                                // タブ回数が行数×6 に膨らまない。
+                                tabIndex={rovingTabIndex(
+                                  UNIT_PRESETS,
+                                  line.unit,
+                                  ui
+                                )}
+                                onKeyDown={(e) => {
+                                  const to = nextIndex(
+                                    e.key,
+                                    ui,
+                                    UNIT_PRESETS.length,
+                                    {
+                                      alt: e.altKey,
+                                      ctrl: e.ctrlKey,
+                                      meta: e.metaKey,
+                                      shift: e.shiftKey,
+                                    }
+                                  );
+                                  if (to === null) return;
+                                  // 矢印は focus だけ動かす。ここで選択まで動かすと、
+                                  // 自由入力した一覧外の単位（「束」など）が
+                                  // 1打鍵で消える（戻す手段が無い）。確定は
+                                  // Space / Enter＝button の既定動作に任せる。
+                                  e.preventDefault();
+                                  const group = e.currentTarget.closest(
+                                    '[role="radiogroup"]'
+                                  );
+                                  const radios = group?.querySelectorAll<HTMLElement>(
+                                    '[role="radio"]'
+                                  );
+                                  radios?.[to]?.focus();
+                                }}
                                 onClick={() =>
                                   updateLine(line.id, { unit: u })
                                 }
@@ -491,10 +575,18 @@ export default function Home() {
                                 {u}
                               </button>
                             ))}
-                            <span className="matunits-hint" aria-hidden="true">
-                              {UNIT_PICKER.hint}
-                            </span>
                           </div>
+                          {/* 「ほかの単位は上の欄に直接書けます」は、一覧に無い
+                              単位への逃げ道を知らせる案内。aria-hidden にすると
+                              案内が支援技術に届かず目的と矛盾するので露出させるが、
+                              radiogroup が所有してよいのは radio だけなので
+                              群の“外”に置き、id 参照だけを渡す。 */}
+                          <span
+                            className="matunits-hint"
+                            id={`unit-hint-${line.id}`}
+                          >
+                            {UNIT_PICKER.hint}
+                          </span>
 
                           <div className="matgrid">
                             <label className="matcell">

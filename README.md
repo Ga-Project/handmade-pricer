@@ -44,6 +44,12 @@ CI も `typecheck → lint → build → test` の順で通し、どれかが落
 - `test/guards.test.mjs` … 静かに壊れる失敗を `out/` で検出する
   （クライアントバンドルへの公開 URL 漏れ／画面と構造化データの不一致／404 への
   FAQPage 混入／共有カード原版と書き出しのズレ）
+- `test/materials.test.mjs` … 材料ごとの積み上げ計算と共有URLの復元
+- `test/itemized-copy.test.mjs` … 材料ごとUIの文言の不変量
+- `test/radiogroup.test.mjs` … 単位チップのキー操作と roving tabindex
+
+ブラウザでしか分からないもの（320px の横スクロール・操作部品の輪郭のコントラスト）は
+`acceptance.e2e.mjs` の `mobile_ok` で見る。判定の中身は `lib/contrast.mjs`。
 
 ## 構成
 

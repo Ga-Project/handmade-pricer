@@ -16,7 +16,13 @@
   --accent-strong: hsl(var(--berry-h) 66% 34%);
   --accent-ink: hsl(var(--berry-h) 60% 34%); /* 文字に使うベリー */
   --accent-soft: hsl(var(--berry-h) 58% 95%); /* 淡いベリー面 */
-  --accent-line: hsl(var(--berry-h) 48% 80%);
+  --accent-line: hsl(var(--berry-h) 48% 80%); /* ベリーの飾り罫（破線の区切り等） */
+  /* ベリー系の「操作できる部品」の輪郭。--accent-line は飾り罫として淡さが要るので
+     兼用できない（対 paper-2 実測 1.71:1）。同じ色相のまま 3:1 まで落とした別トークン。
+     この線が載る面には --accent-soft（「元に戻す」の受け皿）も含む。紙面だけで
+     校正すると、そこだけ静かに 3:1 を割る（dark 側で実際に 2.69:1 まで落ちた）。
+     実測: card 3.55 / paper-2 3.24 / sunken 3.30 / paper 3.41 / accent-soft 3.13。 */
+  --accent-control-line: hsl(var(--berry-h) 48% 60%);
   --accent-fg: #fffdfb;
 
   --paper: hsl(35 42% 97%); /* ページ地・オート紙 */
@@ -29,10 +35,14 @@
   --ink: hsl(345 24% 19%); /* 本文（対 paper 約 12:1） */
   --ink-soft: hsl(345 15% 34%); /* 副（対 paper 約 6:1） */
   --ink-dim: hsl(345 12% 44%); /* 補助（対 paper 約 4.6:1 AA） */
-  --seam: hsl(32 26% 80%); /* 縫い目・点線罫 */
-  --seam-strong: hsl(30 22% 66%);
-  /* 操作の輪郭。SC 1.4.11 の 3:1 を満たす下限（対 --card 実測 3.02:1）。 */
-  --control-line: hsl(30 22% 56%);
+  --seam: hsl(32 26% 80%); /* 縫い目・点線罫（飾り。操作の輪郭には使わない） */
+  --seam-strong: hsl(30 22% 66%); /* 同上・強め */
+  /* 操作できる部品の輪郭。面を持たない/親と同色の部品では、これが「押せる区画」を
+     示す唯一の視覚情報なので SC 1.4.11 の 3:1 が要る。この製品は控えめな紙面を
+     3種類（--card / --paper-2 / --sunken）持ち、同じ部品がどれの上にも載るので、
+     一番不利な面で 3:1 を超える明度にする（実測: card 3.41 / paper-2 3.11 /
+     sunken 3.17 / paper 3.27）。--seam 系は飾り罫なので 3:1 の対象外＝別に保つ。 */
+  --control-line: hsl(30 22% 52%);
 
   --take: hsl(150 44% 30%); /* 手取り（もらえる分）＝落ち着いた苔緑 */
   --take-soft: hsl(150 40% 94%);
@@ -84,6 +94,9 @@
     --accent-ink: hsl(var(--berry-h) 78% 82%);
     --accent-soft: hsl(var(--berry-h) 40% 22%);
     --accent-line: hsl(var(--berry-h) 40% 40%);
+    /* accent-soft の上（「元に戻す」）が一番不利。
+       実測: card 3.57 / paper-2 3.81 / sunken 3.88 / paper 4.12 / accent-soft 3.10 */
+    --accent-control-line: hsl(var(--berry-h) 40% 55%);
     --accent-fg: hsl(345 40% 12%);
 
     --paper: hsl(345 18% 11%);
@@ -98,8 +111,10 @@
     --ink-dim: hsl(35 12% 62%);
     --seam: hsl(345 10% 30%);
     --seam-strong: hsl(345 9% 42%);
-    /* 対 --card 実測 3.01:1（SC 1.4.11） */
-    --control-line: hsl(345 9% 45.5%);
+    /* dark は元から 3.01 で 3:1 を満たしていた（＝light のような不足は無かった）。
+       余裕が 0.01 しか無く、面や不透明度をわずかに触るだけで割るので 46% へ
+       上げ直しただけ。実測: card 3.06 / paper-2 3.27 / sunken 3.33 / paper 3.54 */
+    --control-line: hsl(345 9% 46%);
 
     --take: hsl(150 52% 66%);
     --take-soft: hsl(150 30% 20%);
@@ -111,10 +126,6 @@
     --shadow-paper: 0 1px 1px hsl(0 0% 0% / 0.3), 0 12px 30px -16px hsl(0 0% 0% / 0.6);
     --shadow-tag: 0 2px 3px hsl(0 0% 0% / 0.34), 0 20px 40px -18px hsl(0 0% 0% / 0.7);
     --twine: hsl(32 20% 52%);
-  }
-  /* 暖色の linear ウォッシュは light 専用。dark ではドットのみにする。 */
-  body {
-    background-image: radial-gradient(hsl(30 12% 55% / 0.05) 1px, transparent 1.4px);
   }
 }
 
@@ -136,13 +147,29 @@ body {
   line-height: var(--lh-base);
   color: var(--ink);
   background-color: var(--paper);
-  /* 作業台の紙目: ごく淡いドットと斜めの布目 */
-  background-image:
-    radial-gradient(hsl(30 30% 60% / 0.05) 1px, transparent 1.4px),
-    linear-gradient(135deg, hsl(35 40% 96% / 0.6), transparent 60%);
-  background-size: 18px 18px, 100% 100%;
+  /* 作業台の紙目: ごく淡いドット。両配色に共通。
+     （main では dark だけ hsl(30 12% 55%) に差し替えていたが、その上書きは
+       暖色ウォッシュの打ち消しと同じブロックにあり一緒に撤去した。
+       アルファ 5% の 1px ドットなので、実描画で差は認められない。） */
+  background-image: radial-gradient(hsl(30 30% 60% / 0.05) 1px, transparent 1.4px);
+  background-size: 18px 18px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* 斜めの布目（暖色のウォッシュ）は light 専用。
+   ⚠️ これを「dark で打ち消す」形には書かないこと。@media は詳細度を持たないので、
+   dark 側の body 上書きと基底の body は同じ詳細度 (0,0,1) になり、ソース順が後の
+   基底が必ず勝つ。実際そう書かれていて、dark でも暖色ウォッシュが乗り続け、
+   ヘッダーとヒーローが洗われて本文が約 2.2:1 まで落ちていた（SC 1.4.3 不達）。
+   打ち消すのではなく、light のときだけ足す。 */
+@media (prefers-color-scheme: light) {
+  body {
+    background-image:
+      radial-gradient(hsl(30 30% 60% / 0.05) 1px, transparent 1.4px),
+      linear-gradient(135deg, hsl(35 40% 96% / 0.6), transparent 60%);
+    background-size: 18px 18px, 100% 100%;
+  }
 }
 
 img,
@@ -298,7 +325,12 @@ textarea {
 /* --- 作業台グリッド: 左＝材料と手間 / 右＝下げ札 --- */
 .bench {
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, 1fr) の 0 が要る。1fr のトラックは自動最小値が min-content なので、
+     中の作業台パネル（左右 24px の padding を持つ）が縮めなくなり、320px 幅では
+     トラックだけが 310px に膨らんで画面からはみ出す（実測 326px・材料ごとでは 333px）。
+     値は保持されるので純関数テストには映らず、横スクロールとしてだけ出る（SC 1.4.10）。
+     下の 860px 以上の規則が先に minmax(0, …) を使っているのと同じ理由。 */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-5);
   align-items: start;
   padding-bottom: var(--sp-6);
@@ -368,7 +400,7 @@ textarea {
   display: flex;
   align-items: stretch;
   background: var(--sunken);
-  border: 1.5px solid var(--seam-strong);
+  border: 1.5px solid var(--control-line);
   border-radius: var(--r);
   overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -411,7 +443,7 @@ textarea {
 
 select.plain {
   width: 100%;
-  border: 1.5px solid var(--seam-strong);
+  border: 1.5px solid var(--control-line);
   background: var(--sunken);
   border-radius: var(--r);
   padding: 0.7rem var(--sp-3);
@@ -443,7 +475,7 @@ select.plain:focus-visible {
   height: 26px;
   border-radius: var(--r-pill);
   background: var(--seam-strong);
-  border: 1.5px solid var(--seam-strong);
+  border: 1.5px solid var(--control-line);
   position: relative;
   flex: none;
   transition: background 0.16s;
@@ -781,7 +813,7 @@ select.plain:focus-visible {
 .btn-ghost {
   background: transparent;
   color: var(--accent-ink);
-  border-color: var(--accent-line);
+  border-color: var(--accent-control-line);
 }
 .btn-ghost:hover {
   background: var(--accent-soft);
@@ -1000,7 +1032,7 @@ details p {
   /* 既存の入力欄（.input-affix / select.plain）と同じ枠線の強さに揃える。
      --seam だと面が地とほぼ同化して（対パネル 1.08）、押されていない側の
      当たり判定の範囲が読み取れない。 */
-  border: 1.5px solid var(--seam-strong);
+  border: 1.5px solid var(--control-line);
   border-radius: var(--r-pill);
 }
 .seg-btn {
@@ -1021,13 +1053,13 @@ details p {
 .seg-btn:hover {
   color: var(--ink);
 }
-.seg-btn[aria-pressed="true"] {
+.seg-btn[aria-checked="true"] {
   background: var(--accent);
   color: var(--accent-fg);
 }
 /* 既定のリング色は --accent で、押されている側の地色と同じになり
    「ピルが少し太った」だけに見える。押されている側だけ色をずらす。 */
-.seg-btn[aria-pressed="true"]:focus-visible {
+.seg-btn[aria-checked="true"]:focus-visible {
   outline-color: var(--ink);
 }
 
@@ -1079,7 +1111,10 @@ details p {
   min-height: 44px;
   background: transparent;
   border: 0;
-  border-bottom: 1.5px solid var(--seam);
+  /* 色は SC 1.4.11 のため --control-line のまま。ただし入力欄と同じ 1.5px にすると
+     「紙に手で書いた行」としての軽さが落ちるので、太さで階層を戻す
+     （1.4.11 に線幅の下限は無い）。 */
+  border-bottom: 1px solid var(--control-line);
 }
 .matname::placeholder {
   font-weight: 500;
@@ -1102,7 +1137,7 @@ details p {
   color: var(--ink-soft);
   background: transparent;
   /* 面を持たず枠線だけが輪郭を示す操作なので、入力欄と同じ強さの線を使う。 */
-  border: 1.5px solid var(--seam-strong);
+  border: 1.5px solid var(--control-line);
   border-radius: var(--r-pill);
   /* 44px のタッチ目標を確保する（囲みは小さく見せ、当たりだけ広げる）。 */
   min-height: 44px;
@@ -1157,7 +1192,7 @@ details p {
   font: inherit;
   font-weight: 600;
   color: var(--ink);
-  border: 1.5px solid var(--seam-strong);
+  border: 1.5px solid var(--control-line);
   background: var(--sunken);
   border-radius: var(--r);
   padding: 0.7rem var(--sp-3);
@@ -1191,9 +1226,20 @@ details p {
   font-weight: 700;
   color: var(--ink-dim);
 }
+/* 群の外（.matunits の直後）に置く。radiogroup が所有してよいのは radio だけで、
+   露出した generic な子が混ざると読み上げが群と本文で二重になる。
+   flex コンテナの外なので flex:1 1 100% は効かない。自前で行を作る。 */
 .matunits-hint {
-  flex: 1 1 100%;
+  display: block;
+  /* 負の上マージンで詰めないこと。.matunits の margin-bottom を打ち消すと
+     チップ行との間隔が 0 になり、チップが ::before で 44px に広げている当たりが
+     この文字の上に載る＝「ほかの単位は上の欄に直接書けます」を読んで触った指が
+     最下段のチップを押し、自由入力した単位が戻せない形で上書きされる。
+     矢印キーで同じ事故が起きないよう focus-only にした当の案内文なので、
+     指でだけ起きる状態にしておくのは筋が通らない。 */
+  margin: 0 0 var(--sp-3);
   font-size: var(--fs-cap);
+  line-height: var(--lh-base);
   color: var(--ink-dim);
 }
 .matunit-chip {
@@ -1205,8 +1251,8 @@ details p {
   color: var(--ink-soft);
   background: var(--card);
   /* 面が親（.matrow も --card）と同色なので、「押せる区画」を示す視覚情報は
-     この枠線ただ一つ。SC 1.4.11 の 3:1 を実際に満たす明度まで落とす
-     （--seam-strong は対 card 2.25:1 で足りない）。 */
+     この枠線ただ一つ。SC 1.4.11 の 3:1 は --control-line 側で担保する
+     （--seam 系の飾り罫は対 card 2.26:1 で足りない）。 */
   border: 1.5px solid var(--control-line);
   border-radius: var(--r-pill);
   padding: 0.4rem 0.7rem;
@@ -1226,11 +1272,11 @@ details p {
 }
 .matunit-chip:hover {
   color: var(--accent-ink);
-  /* hover で枠を薄くしない（--accent-line は対 card 1.78:1 で、
+  /* hover で枠を薄くしない（飾り罫の --accent-line は対 card 1.78:1 で、
      触れた瞬間に輪郭が消える方向になっていた）。 */
   border-color: var(--accent);
 }
-.matunit-chip[aria-pressed="true"] {
+.matunit-chip[aria-checked="true"] {
   color: var(--accent-fg);
   background: var(--accent);
   border-color: var(--accent);
@@ -1239,9 +1285,9 @@ details p {
   outline: 2.5px solid var(--accent);
   outline-offset: 2px;
 }
-/* 押されている側は地色が --accent なので、既定のリング色だと同色になり
+/* 選ばれている側は地色が --accent なので、既定のリング色だと同色になり
    「ピルが少し太った」だけに見える（.seg-btn で既に踏んだ欠陥）。 */
-.matunit-chip[aria-pressed="true"]:focus-visible {
+.matunit-chip[aria-checked="true"]:focus-visible {
   outline-color: var(--ink);
 }
 
@@ -1372,7 +1418,7 @@ details p {
   font-weight: 700;
   color: var(--accent-ink);
   background: transparent;
-  border: 1.5px solid var(--accent-line);
+  border: 1.5px solid var(--accent-control-line);
   border-radius: var(--r-pill);
   min-height: 44px;
   padding: 0 var(--sp-4);

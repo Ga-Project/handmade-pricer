@@ -101,12 +101,20 @@ test("関数で作る文言はすべて呼び出し例を持つ（足して忘�
 
 // --- 単位チップ ------------------------------------------------------------
 
-test("単位チップの読み上げ名に単位そのものが入る", () => {
-  for (const u of UNIT_PRESETS) {
-    const label = UNIT_PICKER.optionLabel(2, u);
-    assert.ok(label.includes(u), `単位 ${u} が読み上げ名に入っていない: ${label}`);
-    assert.ok(label.includes("2"), `材料の番号が読み上げ名に入っていない: ${label}`);
-  }
+test("単位チップは読み上げ名を別に持たない（可視の文字がそのまま名前）", () => {
+  // 役が radio＝選択肢なので、名前は「cm」という名詞でよい。
+  // 「材料 1 の単位を cm にする」のような動詞句を aria-label で与えると、
+  // 群の名前（材料 N の単位をえらぶ）と通し番号が二重に読まれ、
+  // しかも選択肢が命令として読み上げられる。
+  assert.equal(
+    UNIT_PICKER.optionLabel,
+    undefined,
+    "チップ個別の読み上げ名は持たない（可視テキストを名前にする）",
+  );
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(COPY_TEMPLATES, "UNIT_PICKER.optionLabel"),
+    "呼び出し例も消す（関数が無いのに例だけ残らないように）",
+  );
 });
 
 test("単位チップの群名は材料ごとに区別できる", () => {
