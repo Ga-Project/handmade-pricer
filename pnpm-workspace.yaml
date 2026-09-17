@@ -5,5 +5,38 @@
 #
 #   unrs-resolver: eslint-config-next が使うリゾルバ(ネイティブ binding)。
 #                  `next lint` / install の build script に必要。
+
+# auditConfig:
+#   CI の `pnpm audit --audit-level high` は high/critical で落ちる。ここに載せた GHSA だけが
+#   exit 0 に寄与する。載せてよいのは「dev ツール専用 / ビルド時のみ / Next サーバ経路
+#   (静的 export では未起動)」で、静的書き出しの出荷物(out/)の攻撃面に到達しないものだけ。
+auditConfig:
+  ignoreGhsas:
+    # --- dev ツール専用(eslint/lint 実行時のみ・出荷物 out/ に非含有) ---
+    - GHSA-mh99-v99m-4gvg   # brace-expansion: グロブ展開 DoS(自作パターンのみ)
+    - GHSA-rgw5-rvv9-x895   # brace-expansion: 同上
+    - GHSA-5j98-mcp5-4vw2   # glob: CLI(-c/--cmd)注入。ライブラリ利用のみで CLI 未使用
+    - GHSA-5p4m-2wfm-xmqj   # js-yaml: eslint 設定パース時の二次 CPU
+    - GHSA-2883-xcg3-v3hh   # js-yaml: 空 merge の CPU 制限欠如(eslint 設定パース時のみ)
+    # --- ビルド時のみ(next > postcss の CSS 処理・出荷 out/ に非含有) ---
+    - GHSA-6g55-p6wh-862q   # postcss: 自作 CSS のみ処理。⚠️外部CSS取込を始めたら即撤去
+    - GHSA-r28c-9q8g-f849   # postcss: 同上(source-map path traversal)
+    - GHSA-2v37-7h3g-55p8   # nanoid: next>postcss 経由のみ・アプリ直呼びなし
+    # --- Next サーバ経路(output:"export"=Next サーバ未起動・GitHub Pages が out/ 配信) ---
+    #   RCE/SSRF/DoS/middleware はいずれもサーバのリクエスト処理脆弱性で本番に経路が無い。
+    #   ⚠️再評価: SSR/API Route/middleware 導入 or Node self-host したら即撤去し next を 15.5.24+ へ。
+    - GHSA-2xp9-vwfh-vxw4   # critical: Unauthenticated RCE
+    - GHSA-p293-qw3h-jr36   # critical: Unauthenticated RCE
+    - GHSA-36qx-fr4f-26g5   # middleware/proxy bypass
+    - GHSA-89xv-2m56-2m9x   # SSRF (Server Actions)
+    - GHSA-8h8q-6873-q5fj   # DoS
+    - GHSA-c4j6-fc7j-m34r   # SSRF
+    - GHSA-h25m-26qc-wcjf   # request deserialization
+    - GHSA-m99w-x7hq-7vfj   # DoS (App Router)
+    - GHSA-p9j2-gv94-2wf4   # SSRF (rewrites)
+    - GHSA-q4gf-8mx6-v5v3   # DoS (Server Actions)
+    # --- 未使用の画像プロセッサ(next > sharp・実行時未呼出・予防的) ---
+    - GHSA-f88m-g3jw-g9cj   # sharp: images.unoptimized で未呼出
+    - GHSA-rgj7-g3m4-5g8c   # sharp: 同梱 libheif(未呼出)
 allowBuilds:
   unrs-resolver: true
